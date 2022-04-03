@@ -1,0 +1,129 @@
+---
+title: "data_preprocessing"
+author: "Adam Drożyński"
+date: "4/2/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(pacman)
+p_load(tictoc,tidyverse,dplyr,broom,ggplot2,clubSandwich,
+       data.table,matrixStats,magrittr,MASS,R.utils,
+       stargazer,DT,furrr, lfe,estimatr,boot,plm,lmtest,multiwayvcov,
+       sandwich,glmnet,ISLR, parallel, haven, MatchIt, optmatch, ipw, AER, rdd)
+```
+
+
+```{r}
+get_full_label_bhps <- function(label, letter){
+  return(paste0('b', letter, '_', label))
+}
+
+read_bhps_by_letter <- function(x){
+  data <- read_stata(paste0('../UKDA-6614-stata/stata/stata13_se/bhps/b', x, '_youth.dta'))
+  data <- data %>% dplyr::select(any_of(c('pidp', 
+                         get_full_label_bhps('ypdoby', x),
+                         get_full_label_bhps('ypsex', x),
+                         get_full_label_bhps('ypnpal', x),
+                         get_full_label_bhps('ypfpark', x),
+                         get_full_label_bhps('ypmkfrn', x),
+                         get_full_label_bhps('yppalo', x),
+                         get_full_label_bhps('yppals', x),
+                         get_full_label_bhps('ypsdqk', x)))) %>% 
+          rename_with(~ 'birthy', all_of(get_full_label_bhps('ypdoby', x))) %>% 
+          rename_with(~ 'sex', all_of(get_full_label_bhps('ypsex', x))) 
+  data$birthy = ifelse(data$birthy > 1000, data$birthy, data$birthy + 1900)
+  return(data)
+}
+
+
+data_youth <- lapply(letters[4:18], read_bhps_by_letter)
+
+data_youth_merged <- data_youth %>% reduce(full_join, by = c('pidp', 'birthy', 'sex'))
+
+```
+
+```{r}
+get_full_label_ukhls <- function(label, letter){
+  return(paste0(letter, '_', label))
+}
+
+read_ukhls_by_letter <- function(x){
+  data <- read_stata(paste0('../UKDA-6614-stata/stata/stata13_se/ukhls/', x, '_indresp.dta'))
+  data <- data %>% dplyr::select(any_of(c('pidp', 
+                         get_full_label_ukhls('birthy', x),
+                         get_full_label_ukhls('sex', x),
+                         get_full_label_ukhls('fimnlabnet_dv', x)))) %>% 
+          rename_with(~ 'birthy', all_of(get_full_label_ukhls('birthy', x))) %>% 
+          rename_with(~ 'sex', all_of(get_full_label_ukhls('sex', x))) %>%
+          rename_with(~ get_full_label_ukhls('income', x), all_of(get_full_label_ukhls('fimnlabnet_dv', x)))
+  data$birthy = ifelse(data$birthy > 1000, data$birthy, data$birthy + 1900)
+  return(data)
+}
+
+data_adults <- lapply(letters[1:11], read_ukhls_by_letter)
+data_adults_merged <- data_adults %>% reduce(full_join, by = c('pidp', 'birthy', 'sex'))
+```
+
+```{r}
+full_data_merge <- data_youth_merged %>% 
+  inner_join(data_adults_merged, by = c('pidp', 'birthy', 'sex'))
+```
+
+```{r}
+data_youth_merged$bg_ypnpal_std = 
+  (data_youth_merged$bg_ypnpal - mean(data_youth_merged$bg_ypnpal, na.rm=TRUE))/
+  sd(data_youth_merged$bg_ypnpal, na.rm=TRUE)
+
+data_youth_merged$bg_yppals_std = 
+  (data_youth_merged$bg_yppals - mean(data_youth_merged$bg_yppals, na.rm=TRUE))/
+  sd(data_youth_merged$bg_yppals, na.rm=TRUE)
+  
+mean(data_youth_merged$bg_ypnpal_std, na.rm=TRUE)
+mean(data_youth_merged$bg_yppals_std, na.rm=TRUE)
+
+cor(data_youth_merged$bg_ypnpal_std, data_youth_merged$bg_yppals_std, use="complete.obs")
+
+
+plot(data_youth_merged$bg_ypnpal, data_youth_merged$bg_yppals)
+```
+
+```{r}
+lm_1 <- lm(data = full_data_merge, i_income ~ birthy + bf_yppals + bf_ypnpal + bg_yppals + bg_ypnpal + bh_yppals + bh_ypnpal + bi_yppals + bi_ypnpal)
+
+summary(lm_1)
+
+
+
+```
+
+```{r}
+
+
+cor(data_youth_merged$bd_ypnpal, data_youth_merged$be_ypnpal, use="complete.obs")
+cor(data_youth_merged$bh_ypnpal, data_youth_merged$bi_ypnpal, use="complete.obs")
+
+mean(data_youth_merged$bh_ypnpal, na.rm=TRUE)
+
+
+mean(data_youth_merged$bd_yppals, na.rm=TRUE)
+mean(data_youth_merged$be_yppals, na.rm=TRUE)
+mean(data_youth_merged$bf_yppals, na.rm=TRUE)
+mean(data_youth_merged$bg_yppals, na.rm=TRUE)
+mean(data_youth_merged$bh_yppals, na.rm=TRUE)
+mean(data_youth_merged$bi_yppals, na.rm=TRUE)
+mean(data_youth_merged$bj_yppals, na.rm=TRUE)
+mean(data_youth_merged$bk_yppals, na.rm=TRUE)
+mean(data_youth_merged$bl_yppals, na.rm=TRUE)
+mean(data_youth_merged$bm_yppals, na.rm=TRUE)
+mean(data_youth_merged$bn_yppals, na.rm=TRUE)
+mean(data_youth_merged$bo_yppals, na.rm=TRUE)
+mean(data_youth_merged$bp_yppals, na.rm=TRUE)
+mean(data_youth_merged$br_yppals, na.rm=TRUE)
+mean(data_youth_merged$bp_yppals, na.rm=TRUE)
+mean(data_youth_merged$bq_yppals, na.rm=TRUE)
+
+
+```
