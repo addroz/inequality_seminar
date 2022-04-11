@@ -33,16 +33,24 @@ read_bhps_by_letter <- function(x){
                          get_full_label_bhps('yppals', x),
                          get_full_label_bhps('ypsdqk', x)))) %>% 
           rename_with(~ 'birthy', all_of(get_full_label_bhps('ypdoby', x))) %>% 
-          rename_with(~ 'sex', all_of(get_full_label_bhps('ypsex', x))) 
+          rename_with(~ 'sex', all_of(get_full_label_bhps('ypsex', x))) %>%
+          rename_with(~ case_when(. == get_full_label_bhps('ypnpal', x) ~ 'ypnpal', 
+                                  . == get_full_label_bhps('ypfpark', x) ~ 'ypfpark', 
+                                  . == get_full_label_bhps('ypmkfrn', x) ~ 'ypmkfrn', 
+                                  . == get_full_label_bhps('yppalo', x) ~ 'yppalo', 
+                                  . == get_full_label_bhps('yppals', x) ~ 'yppals',
+                                  . == get_full_label_bhps('ypsdqk', x) ~ 'ypsdqk',
+                                  TRUE ~ .))
   data$birthy = ifelse(data$birthy > 1000, data$birthy, data$birthy + 1900)
+  data$year = 1991 + (utf8ToInt(x) - utf8ToInt('a'))
+  data$age = data$year - data$birthy
   return(data)
 }
 
 
 data_youth <- lapply(letters[4:18], read_bhps_by_letter)
 
-data_youth_merged <- data_youth %>% reduce(full_join, by = c('pidp', 'birthy', 'sex'))
-
+data_youth_merged <- rbindlist(data_youth, fill = T)
 ```
 
 ```{r}
@@ -55,16 +63,22 @@ read_ukhls_by_letter <- function(x){
   data <- data %>% dplyr::select(any_of(c('pidp', 
                          get_full_label_ukhls('birthy', x),
                          get_full_label_ukhls('sex', x),
+                         get_full_label_ukhls('adcts', x),
+                         get_full_label_ukhls('memploy', x),
                          get_full_label_ukhls('fimnlabnet_dv', x)))) %>% 
           rename_with(~ 'birthy', all_of(get_full_label_ukhls('birthy', x))) %>% 
           rename_with(~ 'sex', all_of(get_full_label_ukhls('sex', x))) %>%
-          rename_with(~ get_full_label_ukhls('income', x), all_of(get_full_label_ukhls('fimnlabnet_dv', x)))
+          rename_with(~ 'moved', all_of(get_full_label_ukhls('adcts', x))) %>%
+          rename_with(~ 'memploy', all_of(get_full_label_ukhls('memploy', x))) %>%
+          rename_with(~ 'income', all_of(get_full_label_ukhls('fimnlabnet_dv', x)))
   data$birthy = ifelse(data$birthy > 1000, data$birthy, data$birthy + 1900)
+  data$year = 2009 + (utf8ToInt(x) - utf8ToInt('a'))
+  data$age = year - birthy
   return(data)
 }
 
-data_adults <- lapply(letters[1:11], read_ukhls_by_letter)
-data_adults_merged <- data_adults %>% reduce(full_join, by = c('pidp', 'birthy', 'sex'))
+data_adults <- lapply(letters[3:11], read_ukhls_by_letter)
+data_adults_merged <- rbindlist(data_adults)
 ```
 
 ```{r}
@@ -125,5 +139,70 @@ mean(data_youth_merged$br_yppals, na.rm=TRUE)
 mean(data_youth_merged$bp_yppals, na.rm=TRUE)
 mean(data_youth_merged$bq_yppals, na.rm=TRUE)
 
+
+```
+
+Moving
+```{r}
+data_adults_merged$moved_bin = 1*(data_adults_merged$moved == 1)
+data_adults_merged$moved_for_job = 1*(data_adults_merged$memploy > 0)
+
+data_adults_merged <- data_adults_merged %>% 
+  group_by(pidp) %>% 
+  arrange(year, .by_group = T) %>%
+  mutate(moved_total = sum(moved_bin))
+
+data_adults_merged <- data_adults_merged %>% 
+  group_by(pidp) %>% 
+  arrange(year, .by_group = T) %>%
+  mutate(moved_for_job_total = sum(moved_for_job))
+
+table(data_adults_merged$moved_total)
+table(data_adults_merged$moved_for_job_total)
+
+lm1 <- felm(income ~ moved_bin + moved_for_job | year + pidp | 0 | year, data = data_adults_merged)
+
+summary(lm1)
+
+#mean(data_adults_merged$income)
+
+#summary(lm(ypnpal ~ year + age, data = data_youth_merged))
+
+
+table(data_youth_merged$age)
+```
+
+Social skills
+```{r}
+data_youth_merged_13 <- data_youth_merged %>% dplyr::filter(age == 12)
+
+
+full_data_merge <- data_adults_merged %>% 
+  inner_join(data_youth_merged_13, by = c('pidp', 'birthy', 'sex'))
+
+
+lm1 <- felm(income ~ I(moved == 1) + I(memploy > 0)  | year.x + pidp | 0 | year.x, data = full_data_merge)
+
+#summary(lm1)
+
+# 
+#           rename_with(~ case_when(. == get_full_label_bhps('ypnpal', x) ~ 'ypnpal', 
+#                                   . == get_full_label_bhps('ypfpark', x) ~ 'ypfpark', 
+#                                   . == get_full_label_bhps('ypmkfrn', x) ~ 'ypmkfrn', 
+#                                   . == get_full_label_bhps('yppalo', x) ~ 'yppalo', 
+#                                   . == get_full_label_bhps('yppals', x) ~ 'yppals',
+#                                   . == get_full_label_bhps('ypsdqk', x) ~ 'ypsdqk',
+#                                   
+summary(lm(moved_bin ~ ypnpal, data = full_data_merge))
+summary(lm(moved_bin ~ ypfpark, data = full_data_merge))
+summary(lm(moved_bin ~ ypmkfrn, data = full_data_merge))
+summary(lm(moved_bin ~ yppalo, data = full_data_merge))
+summary(lm(moved_bin ~ yppals, data = full_data_merge))
+
+summary(lm(moved_for_job ~ ypnpal, data = full_data_merge))
+summary(lm(moved_for_job ~ ypfpark, data = full_data_merge))
+summary(lm(moved_for_job ~ ypmkfrn, data = full_data_merge))
+summary(lm(moved_for_job ~ yppalo, data = full_data_merge))
+summary(lm(moved_for_job ~ yppals, data = full_data_merge))
 
 ```
