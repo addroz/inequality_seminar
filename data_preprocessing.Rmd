@@ -13,6 +13,10 @@ p_load(tictoc,tidyverse,dplyr,broom,ggplot2,clubSandwich,
        data.table,matrixStats,magrittr,MASS,R.utils,
        stargazer,DT,furrr, lfe,estimatr,boot,plm,lmtest,multiwayvcov,
        sandwich,glmnet,ISLR, parallel, haven, MatchIt, optmatch, ipw, AER, rdd)
+PATH_BHPS = '..\\UKDA-6614-stata\\stata\\stata13_se\\bhps\\'
+# PATH_BHPS = '../UKDA-6614-stata/stata/stata13_se/bhps/'
+PATH_UKHLS = '..\\UKDA-6614-stata\\stata\\stata13_se\\ukhls\\'
+# PATH_UKHLS = '../UKDA-6614-stata/stata/stata13_se/ukhls/'
 ```
 
 
@@ -22,7 +26,7 @@ get_full_label_bhps <- function(label, letter){
 }
 
 read_bhps_by_letter <- function(x){
-  data <- read_stata(paste0('../UKDA-6614-stata/stata/stata13_se/bhps/b', x, '_youth.dta'))
+  data <- read_stata(paste0(PATH_BHPS, 'b', x, '_youth.dta'))
   data <- data %>% dplyr::select(any_of(c('pidp', 
                          get_full_label_bhps('ypdoby', x),
                          get_full_label_bhps('ypsex', x),
@@ -59,7 +63,7 @@ get_full_label_ukhls <- function(label, letter){
 }
 
 read_ukhls_by_letter <- function(x){
-  data <- read_stata(paste0('../UKDA-6614-stata/stata/stata13_se/ukhls/', x, '_indresp.dta'))
+  data <- read_stata(paste0(PATH_UKHLS, x, '_indresp.dta'))
   data <- data %>% dplyr::select(any_of(c('pidp', 
                          get_full_label_ukhls('birthy', x),
                          get_full_label_ukhls('sex', x),
