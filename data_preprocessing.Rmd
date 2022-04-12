@@ -55,6 +55,19 @@ read_bhps_by_letter <- function(x){
 data_youth <- lapply(letters[4:18], read_bhps_by_letter)
 
 data_youth_merged <- rbindlist(data_youth, fill = T)
+
+data_youth_merged$ypnpal <- 
+  ifelse(data_youth_merged$ypnpal >= 0, data_youth_merged$ypnpal, NaN)
+data_youth_merged$ypfpark <- 
+  ifelse(data_youth_merged$ypfpark >= 0, data_youth_merged$ypfpark, NaN)
+data_youth_merged$ypmkfrn <- 
+  ifelse(data_youth_merged$ypmkfrn >= 0, data_youth_merged$ypmkfrn, NaN)
+data_youth_merged$yppalo <- 
+  ifelse(data_youth_merged$yppalo >= 0, data_youth_merged$yppalo, NaN)
+data_youth_merged$yppals <- 
+  ifelse(data_youth_merged$yppals >= 0, data_youth_merged$yppals, NaN)
+data_youth_merged$ypsdqk <- 
+  ifelse(data_youth_merged$ypsdqk >= 0, data_youth_merged$ypsdqk, NaN)
 ```
 
 ```{r}
@@ -69,15 +82,23 @@ read_ukhls_by_letter <- function(x){
                          get_full_label_ukhls('sex', x),
                          get_full_label_ukhls('adcts', x),
                          get_full_label_ukhls('memploy', x),
+                         get_full_label_ukhls('family', x),
+                         get_full_label_ukhls('education', x),
+                         get_full_label_ukhls('housing', x),
+                         get_full_label_ukhls('area', x),
                          get_full_label_ukhls('fimnlabnet_dv', x)))) %>% 
           rename_with(~ 'birthy', all_of(get_full_label_ukhls('birthy', x))) %>% 
           rename_with(~ 'sex', all_of(get_full_label_ukhls('sex', x))) %>%
           rename_with(~ 'moved', all_of(get_full_label_ukhls('adcts', x))) %>%
           rename_with(~ 'memploy', all_of(get_full_label_ukhls('memploy', x))) %>%
+          rename_with(~ 'family', all_of(get_full_label_ukhls('family', x))) %>%
+          rename_with(~ 'education', all_of(get_full_label_ukhls('education', x))) %>%
+          rename_with(~ 'housing', all_of(get_full_label_ukhls('housing', x))) %>%
+          rename_with(~ 'area', all_of(get_full_label_ukhls('area', x))) %>%
           rename_with(~ 'income', all_of(get_full_label_ukhls('fimnlabnet_dv', x)))
   data$birthy = ifelse(data$birthy > 1000, data$birthy, data$birthy + 1900)
   data$year = 2009 + (utf8ToInt(x) - utf8ToInt('a'))
-  data$age = year - birthy
+  data$age = data$year - data$birthy
   return(data)
 }
 
@@ -85,71 +106,46 @@ data_adults <- lapply(letters[3:11], read_ukhls_by_letter)
 data_adults_merged <- rbindlist(data_adults)
 ```
 
-```{r}
-full_data_merge <- data_youth_merged %>% 
-  inner_join(data_adults_merged, by = c('pidp', 'birthy', 'sex'))
-```
 
-```{r}
-data_youth_merged$bg_ypnpal_std = 
-  (data_youth_merged$bg_ypnpal - mean(data_youth_merged$bg_ypnpal, na.rm=TRUE))/
-  sd(data_youth_merged$bg_ypnpal, na.rm=TRUE)
-
-data_youth_merged$bg_yppals_std = 
-  (data_youth_merged$bg_yppals - mean(data_youth_merged$bg_yppals, na.rm=TRUE))/
-  sd(data_youth_merged$bg_yppals, na.rm=TRUE)
-  
-mean(data_youth_merged$bg_ypnpal_std, na.rm=TRUE)
-mean(data_youth_merged$bg_yppals_std, na.rm=TRUE)
-
-cor(data_youth_merged$bg_ypnpal_std, data_youth_merged$bg_yppals_std, use="complete.obs")
-
-
-plot(data_youth_merged$bg_ypnpal, data_youth_merged$bg_yppals)
-```
-
-```{r}
-lm_1 <- lm(data = full_data_merge, i_income ~ birthy + bf_yppals + bf_ypnpal + bg_yppals + bg_ypnpal + bh_yppals + bh_ypnpal + bi_yppals + bi_ypnpal)
-
-summary(lm_1)
-
-
-
-```
-
-```{r}
-
-
-cor(data_youth_merged$bd_ypnpal, data_youth_merged$be_ypnpal, use="complete.obs")
-cor(data_youth_merged$bh_ypnpal, data_youth_merged$bi_ypnpal, use="complete.obs")
-
-mean(data_youth_merged$bh_ypnpal, na.rm=TRUE)
-
-
-mean(data_youth_merged$bd_yppals, na.rm=TRUE)
-mean(data_youth_merged$be_yppals, na.rm=TRUE)
-mean(data_youth_merged$bf_yppals, na.rm=TRUE)
-mean(data_youth_merged$bg_yppals, na.rm=TRUE)
-mean(data_youth_merged$bh_yppals, na.rm=TRUE)
-mean(data_youth_merged$bi_yppals, na.rm=TRUE)
-mean(data_youth_merged$bj_yppals, na.rm=TRUE)
-mean(data_youth_merged$bk_yppals, na.rm=TRUE)
-mean(data_youth_merged$bl_yppals, na.rm=TRUE)
-mean(data_youth_merged$bm_yppals, na.rm=TRUE)
-mean(data_youth_merged$bn_yppals, na.rm=TRUE)
-mean(data_youth_merged$bo_yppals, na.rm=TRUE)
-mean(data_youth_merged$bp_yppals, na.rm=TRUE)
-mean(data_youth_merged$br_yppals, na.rm=TRUE)
-mean(data_youth_merged$bp_yppals, na.rm=TRUE)
-mean(data_youth_merged$bq_yppals, na.rm=TRUE)
-
-
-```
-
-Moving
+Moving - data preparation
 ```{r}
 data_adults_merged$moved_bin = 1*(data_adults_merged$moved == 1)
 data_adults_merged$moved_for_job = 1*(data_adults_merged$memploy > 0)
+data_adults_merged$moved_for_family = 1*(data_adults_merged$family > 0)
+data_adults_merged$moved_for_education = 1*(data_adults_merged$education > 0)
+data_adults_merged$moved_for_housing = 1*(data_adults_merged$housing > 0)
+data_adults_merged$moved_for_area = 1*(data_adults_merged$area > 0)
+
+data_adults_merged <- data_adults_merged %>%
+    group_by(pidp) %>%
+    arrange(year, .by_group = T) %>%
+    mutate(moved_times = cumsum(moved_bin))
+
+data_adults_merged <- data_adults_merged %>%
+    group_by(pidp) %>%
+    arrange(year, .by_group = T) %>%
+    mutate(moved_for_job_times = cumsum(moved_for_job))
+
+data_adults_merged <- data_adults_merged %>%
+    group_by(pidp) %>%
+    arrange(year, .by_group = T) %>%
+    mutate(moved_for_family_times = cumsum(moved_for_family))
+
+data_adults_merged <- data_adults_merged %>%
+    group_by(pidp) %>%
+    arrange(year, .by_group = T) %>%
+    mutate(moved_for_education_times = cumsum(moved_for_education))
+
+data_adults_merged <- data_adults_merged %>%
+    group_by(pidp) %>%
+    arrange(year, .by_group = T) %>%
+    mutate(moved_for_housing_times = cumsum(moved_for_housing))
+
+data_adults_merged <- data_adults_merged %>%
+    group_by(pidp) %>%
+    arrange(year, .by_group = T) %>%
+    mutate(moved_for_area_times = cumsum(moved_for_area))
+
 
 data_adults_merged <- data_adults_merged %>% 
   group_by(pidp) %>% 
@@ -161,52 +157,163 @@ data_adults_merged <- data_adults_merged %>%
   arrange(year, .by_group = T) %>%
   mutate(moved_for_job_total = sum(moved_for_job))
 
-table(data_adults_merged$moved_total)
-table(data_adults_merged$moved_for_job_total)
+data_adults_merged <- data_adults_merged %>% 
+  group_by(pidp) %>% 
+  arrange(year, .by_group = T) %>%
+  mutate(moved_for_family_total = sum(moved_for_family))
 
-lm1 <- felm(income ~ moved_bin + moved_for_job | year + pidp | 0 | year, data = data_adults_merged)
+data_adults_merged <- data_adults_merged %>% 
+  group_by(pidp) %>% 
+  arrange(year, .by_group = T) %>%
+  mutate(moved_for_education_total = sum(moved_for_education))
 
-summary(lm1)
+data_adults_merged <- data_adults_merged %>% 
+  group_by(pidp) %>% 
+  arrange(year, .by_group = T) %>%
+  mutate(moved_for_housing_total = sum(moved_for_housing))
 
-#mean(data_adults_merged$income)
-
-#summary(lm(ypnpal ~ year + age, data = data_youth_merged))
-
-
-table(data_youth_merged$age)
+data_adults_merged <- data_adults_merged %>% 
+  group_by(pidp) %>% 
+  arrange(year, .by_group = T) %>%
+  mutate(moved_for_area_total = sum(moved_for_area))
 ```
 
-Social skills
+Moving - regressions
 ```{r}
-data_youth_merged_13 <- data_youth_merged %>% dplyr::filter(age == 12)
+lm1 <- felm(income ~ moved_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+lm2 <- felm(income ~ moved_for_job_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+lm3 <- felm(income ~ moved_for_family_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+lm4 <- felm(income ~ moved_for_education_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+lm5 <- felm(income ~ moved_for_housing_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+lm6 <- felm(income ~ moved_for_area_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
 
 
-full_data_merge <- data_adults_merged %>% 
+lm7 <- 
+  felm(income ~ moved_times + moved_for_job_times + 
+                moved_for_family_times + moved_for_education_times +
+                moved_for_housing_times + moved_for_area_times 
+                  | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+
+stargazer(lm1, lm2, lm3, lm4, lm5, omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+stargazer(lm6, lm7, omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+```
+
+Social skills - data preparation
+```{r}
+data_adults_moves <- data_adults_merged %>% 
+  dplyr::select(pidp, birthy, sex, moved_total, moved_for_job_total, 
+                moved_for_education_total)
+data_adults_moves <- unique(data_adults_moves)
+
+
+data_youth_merged_11 <- data_youth_merged %>% dplyr::filter(age == 11)
+full_data_merge_11 <- data_adults_moves %>% 
+  inner_join(data_youth_merged_11, by = c('pidp', 'birthy', 'sex'))
+
+data_youth_merged_13 <- data_youth_merged %>% dplyr::filter(age == 13)
+full_data_merge_13 <- data_adults_moves %>% 
   inner_join(data_youth_merged_13, by = c('pidp', 'birthy', 'sex'))
 
 
-lm1 <- felm(income ~ I(moved == 1) + I(memploy > 0)  | year.x + pidp | 0 | year.x, data = full_data_merge)
+data_youth_merged_15 <- data_youth_merged %>% dplyr::filter(age == 15)
+full_data_merge_15 <- data_adults_moves %>% 
+  inner_join(data_youth_merged_15, by = c('pidp', 'birthy', 'sex'))
+```
 
-#summary(lm1)
+Social skills - regressions
+```{r}
+stargazer(lm(moved_total ~ ypnpal, data = full_data_merge_11),
+          lm(moved_total ~ ypfpark, data = full_data_merge_11),
+          lm(moved_total ~ ypmkfrn, data = full_data_merge_11),
+          lm(moved_total ~ yppalo, data = full_data_merge_11),
+          lm(moved_total ~ yppals, data = full_data_merge_11),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
 
-# 
-#           rename_with(~ case_when(. == get_full_label_bhps('ypnpal', x) ~ 'ypnpal', 
-#                                   . == get_full_label_bhps('ypfpark', x) ~ 'ypfpark', 
-#                                   . == get_full_label_bhps('ypmkfrn', x) ~ 'ypmkfrn', 
-#                                   . == get_full_label_bhps('yppalo', x) ~ 'yppalo', 
-#                                   . == get_full_label_bhps('yppals', x) ~ 'yppals',
-#                                   . == get_full_label_bhps('ypsdqk', x) ~ 'ypsdqk',
-#                                   
-summary(lm(moved_bin ~ ypnpal, data = full_data_merge))
-summary(lm(moved_bin ~ ypfpark, data = full_data_merge))
-summary(lm(moved_bin ~ ypmkfrn, data = full_data_merge))
-summary(lm(moved_bin ~ yppalo, data = full_data_merge))
-summary(lm(moved_bin ~ yppals, data = full_data_merge))
+stargazer(lm(moved_for_job_total ~ ypnpal, data = full_data_merge_11),
+          lm(moved_for_job_total ~ ypfpark, data = full_data_merge_11),
+          lm(moved_for_job_total ~ ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_job_total ~ yppalo, data = full_data_merge_11),
+          lm(moved_for_job_total ~ yppals, data = full_data_merge_11),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
 
-summary(lm(moved_for_job ~ ypnpal, data = full_data_merge))
-summary(lm(moved_for_job ~ ypfpark, data = full_data_merge))
-summary(lm(moved_for_job ~ ypmkfrn, data = full_data_merge))
-summary(lm(moved_for_job ~ yppalo, data = full_data_merge))
-summary(lm(moved_for_job ~ yppals, data = full_data_merge))
+stargazer(lm(moved_for_education_total ~ ypnpal, data = full_data_merge_11),
+          lm(moved_for_education_total ~ ypfpark, data = full_data_merge_11),
+          lm(moved_for_education_total ~ ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_education_total ~ yppalo, data = full_data_merge_11),
+          lm(moved_for_education_total ~ yppals, data = full_data_merge_11),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
 
+
+
+
+stargazer(lm(moved_total ~ ypnpal, data = full_data_merge_13),
+          lm(moved_total ~ ypfpark, data = full_data_merge_13),
+          lm(moved_total ~ ypmkfrn, data = full_data_merge_13),
+          lm(moved_total ~ yppalo, data = full_data_merge_13),
+          lm(moved_total ~ yppals, data = full_data_merge_13),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_job_total ~ ypnpal, data = full_data_merge_13),
+          lm(moved_for_job_total ~ ypfpark, data = full_data_merge_13),
+          lm(moved_for_job_total ~ ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_job_total ~ yppalo, data = full_data_merge_13),
+          lm(moved_for_job_total ~ yppals, data = full_data_merge_13),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_education_total ~ ypnpal, data = full_data_merge_13),
+          lm(moved_for_education_total ~ ypfpark, data = full_data_merge_13),
+          lm(moved_for_education_total ~ ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_education_total ~ yppalo, data = full_data_merge_13),
+          lm(moved_for_education_total ~ yppals, data = full_data_merge_13),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+
+
+stargazer(lm(moved_total ~ ypnpal, data = full_data_merge_15),
+          lm(moved_total ~ ypfpark, data = full_data_merge_15),
+          lm(moved_total ~ ypmkfrn, data = full_data_merge_15),
+          lm(moved_total ~ yppalo, data = full_data_merge_15),
+          lm(moved_total ~ yppals, data = full_data_merge_15),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_job_total ~ ypnpal, data = full_data_merge_15),
+          lm(moved_for_job_total ~ ypfpark, data = full_data_merge_15),
+          lm(moved_for_job_total ~ ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_job_total ~ yppalo, data = full_data_merge_15),
+          lm(moved_for_job_total ~ yppals, data = full_data_merge_15),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_education_total ~ ypnpal, data = full_data_merge_15),
+          lm(moved_for_education_total ~ ypfpark, data = full_data_merge_15),
+          lm(moved_for_education_total ~ ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_education_total ~ yppalo, data = full_data_merge_15),
+          lm(moved_for_education_total ~ yppals, data = full_data_merge_15),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
 ```
