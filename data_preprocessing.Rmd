@@ -213,7 +213,8 @@ data_adults_moves <- data_adults_merged %>%
   dplyr::select(pidp, birthy, sex, moved_total, moved_for_job_total, 
                 moved_for_education_total)
 data_adults_moves <- unique(data_adults_moves)
-
+data_adults_moves$moved_for_career_total <- 
+  data_adults_moves$moved_for_job_total + data_adults_moves$moved_for_education_total
 
 data_youth_merged_11 <- data_youth_merged %>% dplyr::filter(age == 11)
 full_data_merge_11 <- data_adults_moves %>% 
@@ -258,7 +259,14 @@ stargazer(lm(moved_for_education_total ~ ypnpal, data = full_data_merge_11),
           omit.table.layout = c("n"),
           type = 'text')
 
-
+stargazer(lm(moved_for_career_total ~ ypnpal, data = full_data_merge_11),
+          lm(moved_for_career_total ~ ypfpark, data = full_data_merge_11),
+          lm(moved_for_career_total ~ ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_career_total ~ yppalo, data = full_data_merge_11),
+          lm(moved_for_career_total ~ yppals, data = full_data_merge_11),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
 
 
 stargazer(lm(moved_total ~ ypnpal, data = full_data_merge_13),
@@ -288,6 +296,14 @@ stargazer(lm(moved_for_education_total ~ ypnpal, data = full_data_merge_13),
           omit.table.layout = c("n"),
           type = 'text')
 
+stargazer(lm(moved_for_career_total ~ ypnpal, data = full_data_merge_13),
+          lm(moved_for_career_total ~ ypfpark, data = full_data_merge_13),
+          lm(moved_for_career_total ~ ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_career_total ~ yppalo, data = full_data_merge_13),
+          lm(moved_for_career_total ~ yppals, data = full_data_merge_13),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
 
 
 stargazer(lm(moved_total ~ ypnpal, data = full_data_merge_15),
@@ -313,6 +329,40 @@ stargazer(lm(moved_for_education_total ~ ypnpal, data = full_data_merge_15),
           lm(moved_for_education_total ~ ypmkfrn, data = full_data_merge_15),
           lm(moved_for_education_total ~ yppalo, data = full_data_merge_15),
           lm(moved_for_education_total ~ yppals, data = full_data_merge_15),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_career_total ~ ypnpal, data = full_data_merge_15),
+          lm(moved_for_career_total ~ ypfpark, data = full_data_merge_15),
+          lm(moved_for_career_total ~ ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_career_total ~ yppalo, data = full_data_merge_15),
+          lm(moved_for_career_total ~ yppals, data = full_data_merge_15),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+
+stargazer(lm(moved_total ~ yppalo + ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_job_total ~ yppalo + ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_education_total ~ yppalo + ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_career_total ~ yppalo + ypmkfrn, data = full_data_merge_11),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_total ~ yppalo + ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_job_total ~ yppalo + ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_education_total ~ yppalo + ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_career_total ~ yppalo + ypmkfrn, data = full_data_merge_13),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_total ~ yppalo + ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_job_total ~ yppalo + ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_education_total ~ yppalo + ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_career_total ~ yppalo + ypmkfrn, data = full_data_merge_15),
           omit.stat = c("adj.rsq","ser", "f"),
           omit.table.layout = c("n"),
           type = 'text')
