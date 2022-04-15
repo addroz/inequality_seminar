@@ -22,7 +22,7 @@ Social skills - data preparation
 ```{r}
 data_adults_moves <- data_adults_merged %>% 
   dplyr::select(pidp, birthy, sex, moved_total, moved_for_job_total, 
-                moved_for_education_total)
+                moved_for_education_total, moved_for_career_total)
 data_adults_moves <- unique(data_adults_moves)
 
 data_youth_merged_11 <- data_youth_merged %>% dplyr::filter(age == 11)

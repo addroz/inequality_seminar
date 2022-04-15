@@ -120,71 +120,27 @@ data_adults_merged$moved_for_family = 1*(data_adults_merged$family > 0)
 data_adults_merged$moved_for_education = 1*(data_adults_merged$education > 0)
 data_adults_merged$moved_for_housing = 1*(data_adults_merged$housing > 0)
 data_adults_merged$moved_for_area = 1*(data_adults_merged$area > 0)
+data_adults_merged$moved_for_career = 1*(data_adults_merged$memploy > 0 | 
+                                           data_adults_merged$education > 0)
 
 data_adults_merged <- data_adults_merged %>%
     group_by(pidp) %>%
     arrange(year, .by_group = T) %>%
-    mutate(moved_times = cumsum(moved_bin))
-
-data_adults_merged <- data_adults_merged %>%
-    group_by(pidp) %>%
-    arrange(year, .by_group = T) %>%
-    mutate(moved_for_job_times = cumsum(moved_for_job))
-
-data_adults_merged <- data_adults_merged %>%
-    group_by(pidp) %>%
-    arrange(year, .by_group = T) %>%
-    mutate(moved_for_family_times = cumsum(moved_for_family))
-
-data_adults_merged <- data_adults_merged %>%
-    group_by(pidp) %>%
-    arrange(year, .by_group = T) %>%
-    mutate(moved_for_education_times = cumsum(moved_for_education))
-
-data_adults_merged <- data_adults_merged %>%
-    group_by(pidp) %>%
-    arrange(year, .by_group = T) %>%
-    mutate(moved_for_housing_times = cumsum(moved_for_housing))
-
-data_adults_merged <- data_adults_merged %>%
-    group_by(pidp) %>%
-    arrange(year, .by_group = T) %>%
-    mutate(moved_for_area_times = cumsum(moved_for_area))
-
-
-data_adults_merged <- data_adults_merged %>% 
-  group_by(pidp) %>% 
-  arrange(year, .by_group = T) %>%
-  mutate(moved_total = sum(moved_bin))
-
-data_adults_merged <- data_adults_merged %>% 
-  group_by(pidp) %>% 
-  arrange(year, .by_group = T) %>%
-  mutate(moved_for_job_total = sum(moved_for_job))
-
-data_adults_merged <- data_adults_merged %>% 
-  group_by(pidp) %>% 
-  arrange(year, .by_group = T) %>%
-  mutate(moved_for_family_total = sum(moved_for_family))
-
-data_adults_merged <- data_adults_merged %>% 
-  group_by(pidp) %>% 
-  arrange(year, .by_group = T) %>%
-  mutate(moved_for_education_total = sum(moved_for_education))
-
-data_adults_merged <- data_adults_merged %>% 
-  group_by(pidp) %>% 
-  arrange(year, .by_group = T) %>%
-  mutate(moved_for_housing_total = sum(moved_for_housing))
-
-data_adults_merged <- data_adults_merged %>% 
-  group_by(pidp) %>% 
-  arrange(year, .by_group = T) %>%
-  mutate(moved_for_area_total = sum(moved_for_area))
-
-data_adults_merged$moved_for_career_total <- 
-  data_adults_merged$moved_for_job_total + data_adults_merged$moved_for_education_total
-
+    mutate(moved_times = cumsum(moved_bin)) %>%
+    mutate(moved_total = sum(moved_bin)) %>%
+    mutate(moved_for_job_times = cumsum(moved_for_job)) %>%
+    mutate(moved_for_job_total = sum(moved_for_job)) %>%
+    mutate(moved_for_family_times = cumsum(moved_for_family)) %>%
+    mutate(moved_for_family_total = sum(moved_for_family)) %>%
+    mutate(moved_for_education_times = cumsum(moved_for_education)) %>%
+    mutate(moved_for_education_total = sum(moved_for_education)) %>%
+    mutate(moved_for_housing_times = cumsum(moved_for_housing)) %>%
+    mutate(moved_for_housing_total = sum(moved_for_housing)) %>%
+    mutate(moved_for_area_times = cumsum(moved_for_area)) %>%
+    mutate(moved_for_area_total = sum(moved_for_area)) %>%
+    mutate(moved_for_career_times = cumsum(moved_for_career)) %>%
+    mutate(moved_for_career_total = sum(moved_for_area))
+  
 write.csv(data_adults_merged, 'data_adults_merged.csv')
 ```
 

@@ -31,7 +31,7 @@ lm5 <- felm(income ~ moved_for_housing_times | year + pidp + age | 0 | pidp,
        data = data_adults_merged)
 lm6 <- felm(income ~ moved_for_area_times | year + pidp + age | 0 | pidp, 
        data = data_adults_merged)
-lm7 <- felm(income ~ moved_for_career_total | year + pidp + age | 0 | pidp, 
+lm7 <- felm(income ~ moved_for_career_times | year + pidp + age | 0 | pidp, 
        data = data_adults_merged)
 
 lm8 <- 
