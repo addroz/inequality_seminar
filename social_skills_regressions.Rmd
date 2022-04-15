@@ -1,0 +1,232 @@
+---
+title: "social_skills_regressions"
+author: "Adam Drożyński"
+date: "4/15/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(pacman)
+p_load(tictoc,tidyverse,dplyr,broom,ggplot2,clubSandwich,
+       data.table,matrixStats,magrittr,MASS,R.utils,
+       stargazer,DT,furrr, lfe,estimatr,boot,plm,lmtest,multiwayvcov,
+       sandwich,glmnet,ISLR, parallel, haven, MatchIt, optmatch, ipw, AER, rdd)
+
+data_adults_merged = read.csv('data_adults_merged.csv')
+data_youth_merged = read.csv('data_youth_merged.csv')
+```
+
+Social skills - data preparation
+```{r}
+data_adults_moves <- data_adults_merged %>% 
+  dplyr::select(pidp, birthy, sex, moved_total, moved_for_job_total, 
+                moved_for_education_total)
+data_adults_moves <- unique(data_adults_moves)
+
+data_youth_merged_11 <- data_youth_merged %>% dplyr::filter(age == 11)
+full_data_merge_11 <- data_adults_moves %>% 
+  inner_join(data_youth_merged_11, by = c('pidp', 'birthy', 'sex'))
+
+data_youth_merged_13 <- data_youth_merged %>% dplyr::filter(age == 13)
+full_data_merge_13 <- data_adults_moves %>% 
+  inner_join(data_youth_merged_13, by = c('pidp', 'birthy', 'sex'))
+
+
+data_youth_merged_15 <- data_youth_merged %>% dplyr::filter(age == 15)
+full_data_merge_15 <- data_adults_moves %>% 
+  inner_join(data_youth_merged_15, by = c('pidp', 'birthy', 'sex'))
+
+data_youth_merged_mean <- data_youth_merged %>% 
+  group_by(pidp, birthy, sex) %>% 
+  summarise(across(everything(), list(function(x){mean(x, na.rm=T)})))
+full_data_merge_mean <- data_adults_moves %>% 
+  inner_join(data_youth_merged_mean, by = c('pidp', 'birthy', 'sex'))
+
+```
+
+Social skills - regressions
+```{r}
+stargazer(lm(moved_total ~ ypnpal, data = full_data_merge_11),
+          lm(moved_total ~ ypfpark, data = full_data_merge_11),
+          lm(moved_total ~ ypmkfrn, data = full_data_merge_11),
+          lm(moved_total ~ yppalo, data = full_data_merge_11),
+          lm(moved_total ~ yppals, data = full_data_merge_11),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_job_total ~ ypnpal, data = full_data_merge_11),
+          lm(moved_for_job_total ~ ypfpark, data = full_data_merge_11),
+          lm(moved_for_job_total ~ ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_job_total ~ yppalo, data = full_data_merge_11),
+          lm(moved_for_job_total ~ yppals, data = full_data_merge_11),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_education_total ~ ypnpal, data = full_data_merge_11),
+          lm(moved_for_education_total ~ ypfpark, data = full_data_merge_11),
+          lm(moved_for_education_total ~ ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_education_total ~ yppalo, data = full_data_merge_11),
+          lm(moved_for_education_total ~ yppals, data = full_data_merge_11),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_career_total ~ ypnpal, data = full_data_merge_11),
+          lm(moved_for_career_total ~ ypfpark, data = full_data_merge_11),
+          lm(moved_for_career_total ~ ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_career_total ~ yppalo, data = full_data_merge_11),
+          lm(moved_for_career_total ~ yppals, data = full_data_merge_11),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+
+stargazer(lm(moved_total ~ ypnpal, data = full_data_merge_13),
+          lm(moved_total ~ ypfpark, data = full_data_merge_13),
+          lm(moved_total ~ ypmkfrn, data = full_data_merge_13),
+          lm(moved_total ~ yppalo, data = full_data_merge_13),
+          lm(moved_total ~ yppals, data = full_data_merge_13),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_job_total ~ ypnpal, data = full_data_merge_13),
+          lm(moved_for_job_total ~ ypfpark, data = full_data_merge_13),
+          lm(moved_for_job_total ~ ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_job_total ~ yppalo, data = full_data_merge_13),
+          lm(moved_for_job_total ~ yppals, data = full_data_merge_13),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_education_total ~ ypnpal, data = full_data_merge_13),
+          lm(moved_for_education_total ~ ypfpark, data = full_data_merge_13),
+          lm(moved_for_education_total ~ ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_education_total ~ yppalo, data = full_data_merge_13),
+          lm(moved_for_education_total ~ yppals, data = full_data_merge_13),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_career_total ~ ypnpal, data = full_data_merge_13),
+          lm(moved_for_career_total ~ ypfpark, data = full_data_merge_13),
+          lm(moved_for_career_total ~ ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_career_total ~ yppalo, data = full_data_merge_13),
+          lm(moved_for_career_total ~ yppals, data = full_data_merge_13),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+
+stargazer(lm(moved_total ~ ypnpal, data = full_data_merge_15),
+          lm(moved_total ~ ypfpark, data = full_data_merge_15),
+          lm(moved_total ~ ypmkfrn, data = full_data_merge_15),
+          lm(moved_total ~ yppalo, data = full_data_merge_15),
+          lm(moved_total ~ yppals, data = full_data_merge_15),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_job_total ~ ypnpal, data = full_data_merge_15),
+          lm(moved_for_job_total ~ ypfpark, data = full_data_merge_15),
+          lm(moved_for_job_total ~ ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_job_total ~ yppalo, data = full_data_merge_15),
+          lm(moved_for_job_total ~ yppals, data = full_data_merge_15),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_education_total ~ ypnpal, data = full_data_merge_15),
+          lm(moved_for_education_total ~ ypfpark, data = full_data_merge_15),
+          lm(moved_for_education_total ~ ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_education_total ~ yppalo, data = full_data_merge_15),
+          lm(moved_for_education_total ~ yppals, data = full_data_merge_15),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_career_total ~ ypnpal, data = full_data_merge_15),
+          lm(moved_for_career_total ~ ypfpark, data = full_data_merge_15),
+          lm(moved_for_career_total ~ ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_career_total ~ yppalo, data = full_data_merge_15),
+          lm(moved_for_career_total ~ yppals, data = full_data_merge_15),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+
+
+stargazer(lm(moved_total ~ ypnpal_1, data = full_data_merge_mean),
+          lm(moved_total ~ ypfpark_1, data = full_data_merge_mean),
+          lm(moved_total ~ ypmkfrn_1, data = full_data_merge_mean),
+          lm(moved_total ~ yppalo_1, data = full_data_merge_mean),
+          lm(moved_total ~ yppals_1, data = full_data_merge_mean),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_job_total ~ ypnpal_1, data = full_data_merge_mean),
+          lm(moved_for_job_total ~ ypfpark_1, data = full_data_merge_mean),
+          lm(moved_for_job_total ~ ypmkfrn_1, data = full_data_merge_mean),
+          lm(moved_for_job_total ~ yppalo_1, data = full_data_merge_mean),
+          lm(moved_for_job_total ~ yppals_1, data = full_data_merge_mean),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_education_total ~ ypnpal_1, data = full_data_merge_mean),
+          lm(moved_for_education_total ~ ypfpark_1, data = full_data_merge_mean),
+          lm(moved_for_education_total ~ ypmkfrn_1, data = full_data_merge_mean),
+          lm(moved_for_education_total ~ yppalo_1, data = full_data_merge_mean),
+          lm(moved_for_education_total ~ yppals_1, data = full_data_merge_mean),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_for_career_total ~ ypnpal_1, data = full_data_merge_mean),
+          lm(moved_for_career_total ~ ypfpark_1, data = full_data_merge_mean),
+          lm(moved_for_career_total ~ ypmkfrn_1, data = full_data_merge_mean),
+          lm(moved_for_career_total ~ yppalo_1, data = full_data_merge_mean),
+          lm(moved_for_career_total ~ yppals_1, data = full_data_merge_mean),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+
+
+stargazer(lm(moved_total ~ yppalo + ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_job_total ~ yppalo + ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_education_total ~ yppalo + ypmkfrn, data = full_data_merge_11),
+          lm(moved_for_career_total ~ yppalo + ypmkfrn, data = full_data_merge_11),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_total ~ yppalo + ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_job_total ~ yppalo + ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_education_total ~ yppalo + ypmkfrn, data = full_data_merge_13),
+          lm(moved_for_career_total ~ yppalo + ypmkfrn, data = full_data_merge_13),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_total ~ yppalo + ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_job_total ~ yppalo + ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_education_total ~ yppalo + ypmkfrn, data = full_data_merge_15),
+          lm(moved_for_career_total ~ yppalo + ypmkfrn, data = full_data_merge_15),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+stargazer(lm(moved_total ~ yppalo_1 + ypmkfrn_1, data = full_data_merge_mean),
+          lm(moved_for_job_total ~ yppalo_1 + ypmkfrn_1, data = full_data_merge_mean),
+          lm(moved_for_education_total ~ yppalo_1 + ypmkfrn_1, data = full_data_merge_mean),
+          lm(moved_for_career_total ~ yppalo_1 + ypmkfrn_1, data = full_data_merge_mean),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+```
