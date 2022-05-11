@@ -1,0 +1,227 @@
+---
+title: "moving_regressions"
+author: "Adam Drożyński"
+date: "4/15/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(pacman)
+p_load(tictoc,tidyverse,dplyr,broom,ggplot2,clubSandwich,
+       data.table,matrixStats,magrittr,MASS,R.utils,
+       stargazer,DT,furrr, lfe,estimatr,boot,plm,lmtest,multiwayvcov,
+       sandwich,glmnet,ISLR, parallel, haven, MatchIt, optmatch, ipw, AER, rdd)
+
+data_adults_merged = read.csv('data_adults_merged.csv')
+data_adults_merged <- data_adults_merged[data_adults_merged$job_income > 0, ]
+data_adults_merged$log_job_income = log(data_adults_merged$job_income)
+```
+
+Moving - basic regressions
+```{r}
+did_moved <- 
+  felm(log_job_income ~ moved_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_job <- 
+  felm(log_job_income ~ moved_for_job_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_look_job <- 
+  felm(log_job_income ~ moved_to_look_for_job_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_family <- 
+  felm(log_job_income ~ moved_for_family_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_education <- 
+  felm(log_job_income ~ moved_for_education_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_housing <- 
+  felm(log_job_income ~ moved_for_housing_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_area <- 
+  felm(log_job_income ~ moved_for_area_times | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+
+stargazer(did_moved, did_moved_job, did_moved_look_job, 
+          omit.stat = c("adj.rsq","ser", "f"),
+          type = 'text')
+
+stargazer(did_moved_family, did_moved_education, did_moved_housing, did_moved_area,
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+```
+
+Moving - depending on sex
+```{r}
+did_moved_f <- 
+  felm(log_job_income ~ moved_times + moved_times:female | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_job_f <- 
+  felm(log_job_income ~ moved_for_job_times + moved_for_job_times:female 
+       | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_look_job_f <- 
+  felm(log_job_income ~ moved_to_look_for_job_times + moved_to_look_for_job_times:female
+       | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_family_f <- 
+  felm(log_job_income ~ moved_for_family_times + moved_for_family_times:female 
+       | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_education_f <- 
+  felm(log_job_income ~ moved_for_education_times + moved_for_education_times:female 
+       | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_housing_f <- 
+  felm(log_job_income ~ moved_for_housing_times + moved_for_housing_times:female
+       | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_area_f <- 
+  felm(log_job_income ~ moved_for_area_times + moved_for_area_times:female 
+       | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+
+stargazer(did_moved_f, did_moved_job_f, did_moved_look_job_f, 
+          omit.stat = c("adj.rsq","ser", "f"),
+          type = 'text')
+
+stargazer(did_moved_family_f, did_moved_education_f, did_moved_housing_f, did_moved_area_f,
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+```
+
+
+Moving - depending on where do people move
+```{r}
+did_moved_g <- 
+  felm(log_job_income ~ moved_times:factor(gor) | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_job_g <- 
+  felm(log_job_income ~ moved_for_job_times:factor(gor) | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_look_job_g <- 
+  felm(log_job_income ~ moved_to_look_for_job_times:factor(gor) | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_family_g <- 
+  felm(log_job_income ~ moved_for_family_times:factor(gor) | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_education_g <- 
+  felm(log_job_income ~ moved_for_education_times:factor(gor)  | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_housing_g <- 
+  felm(log_job_income ~ moved_for_housing_times:factor(gor) | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+did_moved_area_g <- 
+  felm(log_job_income ~ moved_for_area_times:factor(gor) | year + pidp + age | 0 | pidp, 
+       data = data_adults_merged)
+
+stargazer(did_moved_g, did_moved_job_g, did_moved_look_job_g, 
+          omit.stat = c("adj.rsq","ser", "f"),
+          type = 'text')
+
+stargazer(did_moved_family_g, did_moved_education_g, did_moved_housing_g, did_moved_area_g,
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+```
+
+
+
+Moving - regressions on the sub sample for which we have youth data
+```{r}
+data_youth_merged = read.csv('data_youth_merged.csv')
+
+data_youth_merged_mean <- data_youth_merged %>% 
+  group_by(pidp, birthy, female) %>% 
+  summarise(across(c('p_close_friends', 'p_outdoors_friends', 'p_easy_friends', 
+                     'p_meeting_friends', 'p_in_house_friends', 'hh_income', 'year', 'age'), 
+                   list(function(x){mean(x, na.rm=T)}))) %>%  
+  filter(hh_income_1 > 0) %>%
+  rename(p_close_friends = p_close_friends_1, 
+         p_outdoors_friends = p_outdoors_friends_1, 
+         p_easy_friends = p_easy_friends_1,
+         p_meeting_friends = p_meeting_friends_1, 
+         p_in_house_friends = p_in_house_friends_1, 
+         hh_income = hh_income_1, year = year_1, age = age_1)
+
+data_youth_merged_first <- data_youth_merged %>% 
+  group_by(pidp, birthy, female) %>% 
+  arrange(age, .by_group = T) %>% 
+  filter(hh_income > 0) %>%
+  filter(row_number()==1)
+
+data_youth_merged_last <- data_youth_merged %>% 
+  group_by(pidp, birthy, female) %>% 
+  arrange(desc(age), .by_group = T) %>% 
+  filter(hh_income > 0) %>%
+  filter(row_number()==1)
+
+full_data_merge = merge(data_youth_merged_last, data_adults_merged, 
+                             by=c('pidp', 'female', 'birthy'))
+
+full_data_merge$hh_income_std = 
+  (full_data_merge$hh_income - mean(full_data_merge$hh_income, na.rm=T))/
+  sd(full_data_merge$hh_income, na.rm=T)
+
+full_data_merge$log_hh_income = log(full_data_merge$hh_income)
+
+
+did_moved_hh_income <- 
+  felm(log_job_income ~ moved_times + moved_times:log_hh_income 
+       | year.y + pidp + age.y | 0 | pidp, 
+       data = full_data_merge)
+
+did_moved_for_job_hh_income <- 
+  felm(log_job_income ~ moved_for_job_times + moved_for_job_times:log_hh_income 
+       | year.y + pidp + age.y | 0 | pidp, 
+       data = full_data_merge)
+
+did_moved_not_for_job_hh_income <- 
+  felm(log_job_income ~ moved_not_for_job_times + moved_not_for_job_times:log_hh_income 
+       | year.y + pidp + age.y + gor.y | 0 | pidp, 
+       data = full_data_merge)
+
+
+did_moved_friends <- 
+  felm(log_job_income ~ moved_times + moved_times:p_close_friends 
+       | year.y + pidp + age.y | 0 | pidp, 
+       data = full_data_merge)
+
+did_moved_for_job_friends <- 
+  felm(log_job_income ~ moved_for_job_times + moved_for_job_times:p_close_friends 
+       | year.y + pidp + age.y | 0 | pidp,
+       data = full_data_merge)
+
+did_moved_not_for_job_friends <- 
+  felm(log_job_income ~ moved_not_for_job_times + moved_not_for_job_times:p_close_friends 
+       | year.y + pidp + age.y + gor.y | 0 | pidp,
+       data = full_data_merge)
+
+
+did_moved_easy_friends <- 
+  felm(log_job_income ~ moved_times + moved_times:p_easy_friends 
+       | year.y + pidp + age.y | 0 | pidp, 
+       data = full_data_merge)
+
+did_moved_for_job_easy_friends <- 
+  felm(log_job_income ~ moved_for_job_times + moved_for_job_times:p_easy_friends 
+       | year.y + pidp + age.y | 0 | pidp,
+       data = full_data_merge)
+
+did_moved_not_for_job_easy_friends <- 
+  felm(log_job_income ~ moved_not_for_job_times + moved_not_for_job_times:p_easy_friends 
+       | year.y + pidp + age.y + gor.y | 0 | pidp,
+       data = full_data_merge)
+
+
+stargazer(did_moved_hh_income, did_moved_for_job_hh_income, did_moved_not_for_job_hh_income, 
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+stargazer(did_moved_friends, did_moved_for_job_friends, did_moved_not_for_job_friends, 
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+stargazer(did_moved_easy_friends, did_moved_for_job_easy_friends, 
+          did_moved_not_for_job_easy_friends, 
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+```

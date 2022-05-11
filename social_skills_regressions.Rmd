@@ -16,6 +16,7 @@ p_load(tictoc,tidyverse,dplyr,broom,ggplot2,clubSandwich,
 
 data_adults_merged = read.csv('data_adults_merged.csv')
 data_youth_merged = read.csv('data_youth_merged.csv')
+
 ```
 
 Social skills - data preparation
@@ -35,8 +36,7 @@ full_data_merge_13 <- data_adults_moves %>%
 
 
 data_youth_merged_15 <- data_youth_merged %>% dplyr::filter(age == 15)
-full_data_merge_15 <- data_adults_moves %>% 
-  inner_join(data_youth_merged_15, by = c('pidp', 'birthy', 'sex'))
+full_data_merge_15 <- merge(data_adults_moves, data_youth_merged_15, by = c('pidp', 'birthy', 'sex'))
 
 data_youth_merged_mean <- data_youth_merged %>% 
   group_by(pidp, birthy, sex) %>% 
@@ -46,13 +46,26 @@ full_data_merge_mean <- data_adults_moves %>%
 
 ```
 
+```{r}
+full_data_merge_11 <- full_data_merge_11[!is.na(full_data_merge_11$ypmkfrn), ]
+
+full_data_merge_11$ypmkfrn_ct <- rank(full_data_merge_11$ypmkfrn)/length(full_data_merge_11$ypmkfrn)
+full_data_merge_11$yppals_ct <- rank(full_data_merge_11$yppals)/length(full_data_merge_11$yppals)
+
+stargazer(felm(moved_total ~ ypmkfrn_ct*fihhyl + sex | gor | 0 | gor, data = data_youth_merged),
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"),
+          type = 'text')
+
+```
+
 Social skills - regressions
 ```{r}
-stargazer(lm(moved_total ~ ypnpal, data = full_data_merge_11),
-          lm(moved_total ~ ypfpark, data = full_data_merge_11),
-          lm(moved_total ~ ypmkfrn, data = full_data_merge_11),
-          lm(moved_total ~ yppalo, data = full_data_merge_11),
-          lm(moved_total ~ yppals, data = full_data_merge_11),
+stargazer(lm(moved_total ~ factor(ypnpal), data = full_data_merge_15),
+          lm(moved_total ~ factor(ypfpark), data = full_data_merge_15),
+          lm(moved_total ~ factor(ypmkfrn)*factor(yppalo) + sex, data = full_data_merge_15),
+          lm(moved_total ~ factor(yppalo), data = full_data_merge_15),
+          lm(moved_total ~ factor(yppals), data = full_data_merge_15),
           omit.stat = c("adj.rsq","ser", "f"),
           omit.table.layout = c("n"),
           type = 'text')
