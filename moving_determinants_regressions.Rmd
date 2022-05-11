@@ -1,0 +1,97 @@
+---
+title: "moving_regressions"
+author: "Adam Drożyński"
+date: "4/15/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(pacman)
+p_load(tictoc,tidyverse,dplyr,broom,ggplot2,clubSandwich,
+       data.table,matrixStats,magrittr,MASS,R.utils,
+       stargazer,DT,furrr, lfe,estimatr,boot,plm,lmtest,multiwayvcov,
+       sandwich,glmnet,ISLR, parallel, haven, MatchIt, optmatch, ipw, AER, rdd)
+
+data_adults_merged = read.csv('data_adults_merged.csv')
+data_youth_merged = read.csv('data_youth_merged.csv')
+
+data_youth_merged_11 <- data_youth_merged %>% dplyr::filter(age == 11)
+data_youth_merged_11 <- data_youth_merged_11 %>% 
+  group_by(pidp, birthy, female) %>% 
+  summarise(across(everything(), list(function(x){mean(x, na.rm=T)})))
+
+data_youth_merged_mean <- data_youth_merged %>% 
+  group_by(pidp, birthy, female) %>% 
+  summarise(across(c('p_close_friends', 'p_outdoors_friends', 'p_easy_friends', 
+                     'p_meeting_friends', 'p_in_house_friends', 'hh_income', 'year', 'age'), 
+                   list(function(x){mean(x, na.rm=T)}))) %>%  
+  filter(hh_income_1 > 0) %>%
+  rename(p_close_friends = p_close_friends_1, 
+         p_outdoors_friends = p_outdoors_friends_1, 
+         p_easy_friends = p_easy_friends_1,
+         p_meeting_friends = p_meeting_friends_1, 
+         p_in_house_friends = p_in_house_friends_1, 
+         hh_income = hh_income_1, year = year_1, age = age_1)
+
+data_youth_merged_last <- data_youth_merged %>% 
+  group_by(pidp, birthy, female) %>% 
+  arrange(desc(age), .by_group = T) %>% 
+  filter(row_number()==1)
+
+data_youth_merged_first <- data_youth_merged %>% 
+  group_by(pidp, birthy, female) %>% 
+  arrange(age, .by_group = T) %>% 
+  filter(row_number()==1)
+
+full_data_merge = merge(data_youth_merged_last, data_adults_merged, by=c('pidp', 'female', 'birthy'))
+```
+
+```{r}
+unique_data <- 
+  full_data_merge[c('hh_income', 'gor.x', 'moved_total', 'moved_for_job_total',
+                    'moved_not_for_job_total', 'female', 'birthy', 
+                    'p_close_friends', 'close_friends')]
+unique_data <- unique(unique_data)
+unique_data <- filter(unique_data, hh_income > 0)
+unique_data$log_hh_income = log(unique_data$hh_income)
+
+stargazer(
+  felm(data = unique_data, formula = moved_total ~ log_hh_income 
+       | gor.x + female + birthy),
+  felm(data = unique_data, formula = moved_total ~ p_close_friends 
+       | gor.x + female + birthy),
+  felm(data = unique_data, formula = moved_total ~ close_friends 
+       | gor.x + female + birthy), 
+  type = 'text', omit.stat = c("adj.rsq","ser", "f"))
+
+stargazer(
+  felm(data = unique_data, formula = moved_for_job_total ~ log_hh_income 
+       | gor.x + female + birthy),
+  felm(data = unique_data, formula = moved_for_job_total ~ p_close_friends 
+       | gor.x + female + birthy),
+  felm(data = unique_data, formula = moved_for_job_total ~ close_friends 
+       | gor.x + female + birthy), 
+  type = 'text', omit.stat = c("adj.rsq","ser", "f"))
+
+stargazer(
+  felm(data = unique_data, formula = moved_not_for_job_total ~ log_hh_income 
+       | gor.x + female + birthy),
+  felm(data = unique_data, formula = moved_not_for_job_total ~ p_close_friends 
+       | gor.x + female + birthy),
+  felm(data = unique_data, formula = moved_not_for_job_total ~ close_friends 
+       | gor.x + female + birthy), 
+  type = 'text', omit.stat = c("adj.rsq","ser", "f"))
+
+
+tmp_felm <- felm(data = unique_data, formula = p_close_friends ~ log_hh_income 
+                 | gor.x + female + birthy)
+
+unique_data <- filter(unique_data, close_friends > 0)
+unique_data$log_close_friends = log(unique_data$close_friends)
+stargazer(tmp_felm,
+  felm(data = unique_data, formula = log_close_friends ~ log_hh_income 
+       | gor.x + female + birthy), 
+  type = 'text', omit.stat = c("adj.rsq","ser", "f"))
+```
