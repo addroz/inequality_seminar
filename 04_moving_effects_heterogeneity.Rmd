@@ -1,0 +1,971 @@
+---
+title: "moving_effects_heterogeneity"
+author: "Adam Drożyński"
+date: "5/14/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(pacman)
+p_load(tictoc,tidyverse,dplyr,broom,ggplot2,clubSandwich,
+       data.table,matrixStats,magrittr,MASS,R.utils,grf,fixest,
+       stargazer,DT,furrr, lfe,estimatr,boot,plm,lmtest,multiwayvcov,
+       sandwich,glmnet,ISLR, parallel, haven, MatchIt, optmatch, ipw, AER, rdd)
+
+data_adults_merged_all = read.csv('data_adults_merged.csv')
+
+data_adults_merged <- data_adults_merged_all[data_adults_merged_all$job_income > 0, ]
+data_adults_merged$log_job_income = log(data_adults_merged$job_income)
+
+data_adults_merged_hh <- data_adults_merged_all[data_adults_merged_all$hh_income > 0, ]
+data_adults_merged_hh$hh_income_pp = data_adults_merged_hh$hh_income/data_adults_merged$hhsize
+data_adults_merged_hh$log_hh_income = log(data_adults_merged_hh$hh_income)
+data_adults_merged_hh$log_hh_income_pp = log(data_adults_merged_hh$hh_income_pp)
+
+data_households <- data_adults_merged_all %>% 
+  group_by(hidp) %>%
+  mutate(job_income_max_hh = max(job_income)) %>%
+  mutate(job_income_sum_hh = sum(job_income)) %>%
+  filter(job_income_max_hh > 0) %>%
+  mutate(job_income_max_prt = job_income_max_hh/hh_income) %>%
+  mutate(job_income_sum_prt = job_income_sum_hh/hh_income) %>%
+  filter(job_income_max_prt <= 1) %>%
+  filter(job_income_max_prt >= 0) %>%
+  filter(hhsize - nchild > 1) %>%
+  ungroup()
+```
+
+
+```{r}
+data_youth_merged = read.csv('data_youth_merged.csv')
+
+data_youth_merged_mean <- data_youth_merged %>% 
+  group_by(pidp, birthy, female) %>% 
+  summarise(across(c('p_close_friends', 'p_outdoors_friends', 'p_easy_friends', 
+                     'p_meeting_friends', 'p_in_house_friends', 'hh_income', 'year', 'age'), 
+                   list(function(x){mean(x, na.rm=T)}))) %>%  
+  filter(hh_income_1 > 0) %>%
+  rename(p_close_friends = p_close_friends_1, 
+         p_outdoors_friends = p_outdoors_friends_1, 
+         p_easy_friends = p_easy_friends_1,
+         p_meeting_friends = p_meeting_friends_1, 
+         p_in_house_friends = p_in_house_friends_1, 
+         hh_income = hh_income_1, year = year_1, age = age_1)
+
+data_youth_merged_first <- data_youth_merged %>% 
+  group_by(pidp, birthy, female) %>% 
+  arrange(age, .by_group = T) %>% 
+  filter(hh_income > 0) %>%
+  filter(row_number()==1)
+
+data_youth_merged_last <- data_youth_merged %>% 
+  group_by(pidp, birthy, female) %>% 
+  arrange(desc(age), .by_group = T) %>% 
+  filter(hh_income > 0) %>%
+  filter(row_number()==1)
+```
+
+Moving - regressions on the sub sample for which we have youth data
+These DiD regressions go only to the appendix finally, as there is not so much
+interesting here
+```{r}
+full_data_merge = merge(data_youth_merged_last, data_adults_merged, 
+                             by=c('pidp', 'female', 'birthy'))
+full_data_merge$log_hh_income = log(full_data_merge$hh_income.x)
+
+did_moved_not_for_job_hh_income <- 
+  felm(log_job_income ~ moved_not_for_job_times + moved_not_for_job_times:log_hh_income 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y, 
+       data = full_data_merge)
+
+did_moved_not_for_job_friends <- 
+  felm(log_job_income ~ moved_not_for_job_times + moved_not_for_job_times:p_close_friends 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y,
+       data = full_data_merge)
+
+did_moved_not_for_job_easy_friends <- 
+  felm(log_job_income ~ moved_not_for_job_times + moved_not_for_job_times:p_easy_friends 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y,
+       data = full_data_merge)
+
+did_moved_not_for_job_age <- 
+  felm(log_job_income ~ moved_not_for_job_times + moved_not_for_job_times:age.y 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild |
+         0 | hidp.y,
+       data = full_data_merge)
+
+stargazer(did_moved_not_for_job_hh_income, did_moved_not_for_job_friends, 
+          did_moved_not_for_job_easy_friends, did_moved_not_for_job_age,
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+stargazer(did_moved_not_for_job_hh_income, 
+          did_moved_not_for_job_friends,
+          did_moved_not_for_job_age, 
+          title='Effects of Moving on Job Income: Heterogeneity Analysis',
+          dep.var.labels = c('Job Income (log)'),
+          covariate.labels = c('N. of relocations',
+                               'N. of relocations*Parental Income',
+                               'N. of relocations*N. Friends',
+                               'N. of relocations*Age'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+
+
+full_data_merge_hh = merge(data_youth_merged_last, data_adults_merged_hh, 
+                             by=c('pidp', 'female', 'birthy'))
+full_data_merge_hh$log_hh_income.x = log(full_data_merge_hh$hh_income.x)
+
+
+did_moved_not_for_job_hh_income_hh <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_times + moved_not_for_job_times:log_hh_income.x 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y, 
+       data = full_data_merge_hh)
+
+did_moved_not_for_job_friends_hh <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_times + moved_not_for_job_times:p_close_friends 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y,
+       data = full_data_merge_hh)
+
+did_moved_not_for_job_easy_friends_hh <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_times + moved_not_for_job_times:p_easy_friends 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y,
+       data = full_data_merge_hh)
+
+did_moved_not_for_job_age_hh <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_times + moved_not_for_job_times:age.y 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y,
+       data = full_data_merge_hh)
+
+stargazer(did_moved_not_for_job_hh_income_hh, did_moved_not_for_job_friends_hh, 
+          did_moved_not_for_job_easy_friends_hh, did_moved_not_for_job_age_hh,
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+stargazer(did_moved_not_for_job_hh_income_hh, 
+          did_moved_not_for_job_friends_hh,
+          did_moved_not_for_job_age_hh, 
+          title='Effects of Moving on Per Capita Household Income: Heterogeneity Analysis',
+          dep.var.labels = c('Per Capita Household Income (log)'),
+          covariate.labels = c('N. of relocations',
+                               'N. of relocations*Parental Income',
+                               'N. of relocations*N. Friends',
+                               'N. of relocations*Age'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+
+
+full_data_merge_all = merge(data_youth_merged_last, data_adults_merged_all, 
+                             by=c('pidp', 'female', 'birthy'))
+full_data_merge_all$log_hh_income = log(full_data_merge_all$hh_income.x)
+
+did_moved_not_for_job_hh_income_emp <- 
+  felm(employed ~ moved_not_for_job_times + moved_not_for_job_times:log_hh_income
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y, 
+       data = full_data_merge_all)
+
+did_moved_not_for_job_friends_emp <- 
+  felm(employed ~ moved_not_for_job_times + moved_not_for_job_times:p_close_friends 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y,
+       data = full_data_merge_all)
+
+did_moved_not_for_job_easy_friends_emp <- 
+  felm(employed ~ moved_not_for_job_times + moved_not_for_job_times:p_easy_friends 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y,
+       data = full_data_merge_all)
+
+did_moved_not_for_job_age_emp <- 
+  felm(employed ~ moved_not_for_job_times + moved_not_for_job_times:age.y 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y,
+       data = full_data_merge_all)
+
+stargazer(did_moved_not_for_job_hh_income_emp, did_moved_not_for_job_friends_emp, 
+          did_moved_not_for_job_easy_friends_emp, did_moved_not_for_job_age_emp,
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+stargazer(did_moved_not_for_job_hh_income_emp, 
+          did_moved_not_for_job_friends_emp,
+          did_moved_not_for_job_age_emp, 
+          title='Effects of Moving on Employment: Heterogeneity Analysis',
+          dep.var.labels = c('Employment'),
+          covariate.labels = c('N. of relocations',
+                               'N. of relocations*Parental Income',
+                               'N. of relocations*N. Friends',
+                               'N. of relocations*Age'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+
+
+full_data_merge_households = merge(data_youth_merged_last, data_households, 
+                             by=c('pidp', 'female', 'birthy'))
+full_data_merge_households$log_hh_income = log(full_data_merge_households$hh_income.x)
+
+did_moved_not_for_job_hh_income_dep <- 
+  felm(job_income_max_prt ~ moved_not_for_job_times + moved_not_for_job_times:log_hh_income
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y, 
+       data = full_data_merge_households)
+
+did_moved_not_for_job_friends_dep <- 
+  felm(job_income_max_prt ~ moved_not_for_job_times + moved_not_for_job_times:p_close_friends 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y,
+       data = full_data_merge_households)
+
+did_moved_not_for_job_easy_friends_dep <- 
+  felm(job_income_max_prt ~ moved_not_for_job_times + moved_not_for_job_times:p_easy_friends 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y,
+       data = full_data_merge_households)
+
+did_moved_not_for_job_age_dep <- 
+  felm(job_income_max_prt ~ moved_not_for_job_times + moved_not_for_job_times:age.y 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild | 
+         0 | hidp.y,
+       data = full_data_merge_households)
+
+stargazer(did_moved_not_for_job_hh_income_dep, did_moved_not_for_job_friends_dep, 
+          did_moved_not_for_job_easy_friends_dep, did_moved_not_for_job_age_dep,
+          omit.stat = c("adj.rsq","ser", "f"),
+          omit.table.layout = c("n"), type = 'text')
+stargazer(did_moved_not_for_job_hh_income_dep, 
+          did_moved_not_for_job_friends_dep,
+          did_moved_not_for_job_age_dep, 
+          title='Effects of Moving on the Dependence on Main Provider: Heterogeneity Analysis',
+          dep.var.labels = c('Dependence on Main Provider'),
+          covariate.labels = c('N. of relocations',
+                               'N. of relocations*Parental Income',
+                               'N. of relocations*N. Friends',
+                               'N. of relocations*Age'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+
+```
+
+
+Event studies on the split sample
+```{r}
+full_data_merge_rich_parents <- full_data_merge[full_data_merge$hh_income.x >
+                                                  median(full_data_merge$hh_income.x,
+                                                         na.rm=T), ]
+full_data_merge_poor_parents <- full_data_merge[full_data_merge$hh_income.x <=
+                                                  median(full_data_merge$hh_income.x,
+                                                         na.rm=T), ]
+
+full_data_merge_friends <- full_data_merge[full_data_merge$p_close_friends >
+                                             median(full_data_merge$p_close_friends,
+                                                    na.rm=T), ]
+full_data_merge_few_friends <- full_data_merge[full_data_merge$p_close_friends <=
+                                                 median(full_data_merge$p_close_friends,
+                                                        na.rm=T), ]
+
+
+full_data_merge_hh_rich_parents <- full_data_merge_hh[full_data_merge_hh$hh_income.x > median(full_data_merge_hh$hh_income.x, na.rm=T), ]
+full_data_merge_hh_poor_parents <- full_data_merge_hh[full_data_merge_hh$hh_income.x <= median(full_data_merge_hh$hh_income.x, na.rm=T), ]
+
+full_data_merge_hh_friends <- full_data_merge_hh[full_data_merge_hh$p_close_friends > median(full_data_merge_hh$p_close_friends, na.rm=T), ]
+full_data_merge_hh_few_friends <- full_data_merge_hh[full_data_merge_hh$p_close_friends <= median(full_data_merge_hh$p_close_friends, na.rm=T), ]
+
+
+full_data_merge_emp_rich_parents <- full_data_merge_all[full_data_merge_all$hh_income.x > median(full_data_merge_all$hh_income.x, na.rm=T), ]
+full_data_merge_emp_poor_parents <- full_data_merge_all[full_data_merge_all$hh_income.x <= median(full_data_merge_all$hh_income.x, na.rm=T), ]
+
+full_data_merge_emp_friends <- full_data_merge_all[full_data_merge_all$p_close_friends > median(full_data_merge_all$p_close_friends, na.rm=T), ]
+full_data_merge_emp_few_friends <- full_data_merge_all[full_data_merge_all$p_close_friends <= median(full_data_merge_all$p_close_friends, na.rm=T), ]
+
+
+full_data_merge_households_rich_parents <- full_data_merge_households[full_data_merge_households$hh_income.x > median(full_data_merge_households$hh_income.x, na.rm=T), ]
+full_data_merge_households_poor_parents <- full_data_merge_households[full_data_merge_households$hh_income.x <= median(full_data_merge_households$hh_income.x, na.rm=T), ]
+
+full_data_merge_households_friends <- full_data_merge_households[full_data_merge_households$p_close_friends > median(full_data_merge_households$p_close_friends, na.rm=T), ]
+full_data_merge_households_few_friends <- full_data_merge_households[full_data_merge_households$p_close_friends <= median(full_data_merge_households$p_close_friends, na.rm=T), ]
+
+es_moved_not_job_poor <- 
+  felm(log_job_income ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_rich_parents)
+es_moved_not_job_rich <- 
+  felm(log_job_income ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_poor_parents)
+
+es_moved_not_job_hh_poor <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_hh_rich_parents)
+es_moved_not_job_hh_rich <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_hh_poor_parents)
+
+es_moved_not_job_emp_poor <- 
+  felm(employed ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_emp_rich_parents)
+es_moved_not_job_emp_rich <- 
+  felm(employed ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_emp_poor_parents)
+
+es_moved_not_job_dep_poor <- 
+  felm(job_income_max_prt ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_households_rich_parents)
+es_moved_not_job_dep_rich <- 
+  felm(job_income_max_prt ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_households_poor_parents)
+stargazer(es_moved_not_job_poor, 
+          es_moved_not_job_rich, 
+          es_moved_not_job_hh_poor,
+          es_moved_not_job_hh_rich, type = 'text')
+stargazer(es_moved_not_job_poor, 
+          es_moved_not_job_rich,
+          es_moved_not_job_hh_poor, 
+          es_moved_not_job_hh_rich,
+          title='Effects of Moving: Short-term Heterogeneity by Parental Income',
+          dep.var.labels = c('Job Inc. (log)', 'P.C. HH Inc. (log)'),
+          covariate.labels = c('Moved: Lead 5',
+                               'Moved: Lead 4',
+                               'Moved: Lead 3',
+                               'Moved: Lead 2',
+                               'Moved',
+                               'Moved: Lag 1',
+                               'Moved: Lag 2',
+                               'Moved: Lag 3',
+                               'Moved: Lag 4',
+                               'Moved: Lag 5'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+
+
+stargazer(es_moved_not_job_emp_poor,
+          es_moved_not_job_emp_rich,
+          es_moved_not_job_dep_poor,
+          es_moved_not_job_dep_rich,type = 'text')
+stargazer(es_moved_not_job_emp_poor, 
+          es_moved_not_job_emp_rich,
+          es_moved_not_job_dep_poor, 
+          es_moved_not_job_dep_rich,
+          title='Effects of Moving: Short-term Heterogeneity by Parental Income',
+          dep.var.labels = c('Employment', 'Dep. on Main Provider'),
+          covariate.labels = c('Moved: Lead 5',
+                               'Moved: Lead 4',
+                               'Moved: Lead 3',
+                               'Moved: Lead 2',
+                               'Moved',
+                               'Moved: Lag 1',
+                               'Moved: Lag 2',
+                               'Moved: Lag 3',
+                               'Moved: Lag 4',
+                               'Moved: Lag 5'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+
+
+es_moved_not_job_f <- 
+  felm(log_job_income ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_friends)
+es_moved_not_job_ff <- 
+  felm(log_job_income ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_few_friends)
+
+es_moved_not_job_hh_f <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_hh_friends)
+es_moved_not_job_hh_ff <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_hh_few_friends)
+
+es_moved_not_job_emp_f <- 
+  felm(employed ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_emp_friends)
+es_moved_not_job_emp_ff <- 
+  felm(employed ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_emp_few_friends)
+
+es_moved_not_job_dep_f <- 
+  felm(job_income_max_prt ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_households_friends)
+es_moved_not_job_dep_ff <- 
+  felm(job_income_max_prt ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year.y + pidp + age.y + gor.y + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16 | 0 | hidp.y, 
+       full_data_merge_households_few_friends)
+
+stargazer(es_moved_not_job_ff, 
+          es_moved_not_job_f, 
+          es_moved_not_job_hh_ff,
+          es_moved_not_job_hh_f, type = 'text')
+stargazer(es_moved_not_job_ff, 
+          es_moved_not_job_f,
+          es_moved_not_job_hh_ff, 
+          es_moved_not_job_hh_f,
+          title='Effects of Moving: Short-term Heterogeneity by Social Network',
+          dep.var.labels = c('Job Inc. (log)', 'P.C. HH Inc. (log)'),
+          covariate.labels = c('Moved: Lead 5',
+                               'Moved: Lead 4',
+                               'Moved: Lead 3',
+                               'Moved: Lead 2',
+                               'Moved',
+                               'Moved: Lag 1',
+                               'Moved: Lag 2',
+                               'Moved: Lag 3',
+                               'Moved: Lag 4',
+                               'Moved: Lag 5'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+
+stargazer(es_moved_not_job_emp_ff,
+          es_moved_not_job_emp_f, 
+          es_moved_not_job_dep_ff,
+          es_moved_not_job_dep_f, type = 'text')
+stargazer(es_moved_not_job_emp_ff, 
+          es_moved_not_job_emp_f,
+          es_moved_not_job_dep_ff, 
+          es_moved_not_job_dep_f,
+          title='Effects of Moving: Short-term Heterogeneity by Social Network',
+          dep.var.labels = c('Employment', 'Dep. on Main Provider'),
+          covariate.labels = c('Moved: Lead 5',
+                               'Moved: Lead 4',
+                               'Moved: Lead 3',
+                               'Moved: Lead 2',
+                               'Moved',
+                               'Moved: Lag 1',
+                               'Moved: Lag 2',
+                               'Moved: Lag 3',
+                               'Moved: Lag 4',
+                               'Moved: Lag 5'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+```
+
+I only use the household income part in the main text, and only for them I
+generate the plots
+```{r}
+
+df_to_plot_friends = 
+  rbind(data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_job_hh_f$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_job_hh_f))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_job_hh_f))$`97.5 %`,
+             frd = 'Above Median'), 
+  data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_job_hh_ff$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_job_hh_ff))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_job_hh_ff))$`97.5 %`,
+             frd = 'Below Median'))  
+
+df_to_plot_family_income = 
+  rbind(data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_job_hh_rich$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_job_hh_rich))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_job_hh_rich))$`97.5 %`,
+             inc = 'Above Median'), 
+  data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_job_hh_poor$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_job_hh_poor))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_job_hh_poor))$`97.5 %`,
+             inc = 'Below Median'))  
+
+
+ggplot(data = df_to_plot_friends, aes(x = period, y = log_hh_income_pp, color = frd)) +
+  geom_point() + 
+  geom_errorbar(aes(ymax = ci_up, ymin = ci_down, color = frd)) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  geom_vline(xintercept = -1, linetype="dashed") + 
+  ggtitle("") + xlab("Years from Relocation") + ylab("Estimated coefficients") +
+  labs(color = "Number of Friends") +
+  scale_x_continuous(breaks = c(-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5), 
+                     labels = c("-5", "-4", "-3", "-2", "-1", "0", "1", "2", "3", "4", "5")) + theme_minimal()
+ggsave("Figures/es_network_heterogeneity.pdf")
+ggsave("Figures/es_network_heterogeneity.png")
+
+ggplot(data = df_to_plot_family_income, aes(x = period, y = log_hh_income_pp, color = inc)) +
+  geom_point() + 
+  geom_errorbar(aes(ymax = ci_up, ymin = ci_down, color = inc)) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  geom_vline(xintercept = -1, linetype="dashed") + 
+  ggtitle("") + xlab("Years from Relocation") + ylab("Estimated coefficients") +
+  labs(color = "Parental Income") +
+  scale_x_continuous(breaks = c(-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5), 
+                     labels = c("-5", "-4", "-3", "-2", "-1", "0", "1", "2", "3", "4", "5")) + theme_minimal()
+ggsave("Figures/es_income_heterogeneity.pdf")
+ggsave("Figures/es_income_heterogeneity.png")
+```
+
+```{r}
+test.fraction = 0.3
+
+full_data_merge <- full_data_merge[!is.na(full_data_merge$log_job_income), ]
+full_data_merge <- full_data_merge[!is.na(full_data_merge$moved_not_for_job_times), ]
+full_data_merge <- full_data_merge[!is.na(full_data_merge$p_close_friends), ]
+full_data_merge <- full_data_merge[!is.na(full_data_merge$log_hh_income), ]
+
+did_moved_not_job_base <- 
+  felm(log_job_income ~ moved_not_for_job_times | 
+         year.y + pidp + age.y + gor.y + education_level + job_type | 0 | hidp.y, 
+       data = full_data_merge)
+
+full_data_merge$log_job_income_demeaned <- 
+  full_data_merge$log_job_income - 
+  did_moved_not_job_base$fitted.values + 
+  full_data_merge$moved_not_for_job_times*as.numeric(did_moved_not_job_base$beta)
+
+test_ids <- sample(unique(full_data_merge$pidp), length(unique(full_data_merge$pidp))*test.fraction)
+data_test <- full_data_merge[full_data_merge$pidp %in% test_ids, ]
+data_train <- full_data_merge[!(full_data_merge$pidp %in% test_ids), ]
+
+data_train <- as.data.frame(scale(data_train %>% 
+                              dplyr::select(log_job_income_demeaned, 
+                                            moved_not_for_job_times, 
+                                            log_hh_income, p_close_friends)))
+data_test <- as.data.frame(scale(data_test %>% 
+                              dplyr::select(log_job_income_demeaned, 
+                                            moved_not_for_job_times, 
+                                            log_hh_income, p_close_friends)))
+
+Y <- as.vector(data_train$log_job_income_demeaned)
+W <- as.vector(data_train$moved_not_for_job_times)
+X <- as.data.frame(data_train %>% dplyr::select(log_hh_income, p_close_friends))
+X.test <- as.data.frame(data_test %>% dplyr::select(log_hh_income, p_close_friends))
+  
+tau.forest <- causal_forest(X, Y, W, num.trees = 10000)
+  
+print(average_treatment_effect(tau.forest, target.sample = "all"))
+
+tau.hat.oob <- predict(tau.forest)
+qplot(tau.hat.oob$predictions)
+tau.hat <- predict(tau.forest, X.test, estimate.variance = TRUE)
+sigma.hat <- sqrt(tau.hat$variance.estimates)
+  
+df_to_plot <- data.frame(x = X.test$p_close_friends, y = tau.hat$predictions, 
+                           ci.min = tau.hat$predictions - 1.96 * sigma.hat, 
+                           ci.max = tau.hat$predictions + 1.96 * sigma.hat)
+  
+q10 = as.numeric(quantile(df_to_plot$x, probs = .1, na.rm = T))
+q50 = as.numeric(quantile(df_to_plot$x, probs = .5, na.rm = T))
+q90 = as.numeric(quantile(df_to_plot$x, probs = .9, na.rm = T))
+  
+ggplot(df_to_plot, aes(x = x, y = y)) + geom_line() + 
+  geom_ribbon(aes(ymin = ci.min, ymax = ci.max), alpha = 0.2) + xlab("N of close friends") + 
+  ylab("Estimated effect") + ggtitle("title") + 
+  geom_vline(xintercept = q10, linetype = "dashed") +
+  geom_vline(xintercept = q50, linetype = "dashed") +
+  geom_vline(xintercept = q90, linetype = "dashed")
+
+
+df_to_plot_2 <- data.frame(x1 = X.test$log_hh_income, x2 = X.test$p_close_friends, 
+                           y = tau.hat$predictions)
+    
+ggplot(df_to_plot_2, aes(x = x1, y = x2, color = y)) + 
+    geom_point() + xlab("HH Income (log)") + 
+      ylab("N. of close friends") + labs(color="Estimated effect")
+```
+
+ML part - I don't use it at all as it generates bullshit results
+```{r}
+test.fraction = 0.3
+
+full_data_merge_hh <- full_data_merge_hh[!is.na(full_data_merge_hh$log_hh_income), ]
+full_data_merge_hh <- full_data_merge_hh[!is.na(full_data_merge_hh$moved_not_for_job_times), ]
+full_data_merge_hh <- full_data_merge_hh[!is.na(full_data_merge_hh$p_close_friends), ]
+full_data_merge_hh <- full_data_merge_hh[!is.na(full_data_merge_hh$log_hh_income.x), ]
+
+did_moved_not_job_base <- 
+  felm(log_hh_income ~ moved_not_for_job_times | 
+         year.y + pidp + age.y + gor.y + education_level + job_type | 0 | hidp.y, 
+       data = full_data_merge_hh)
+
+full_data_merge_hh$log_hh_income_demeaned <- 
+  full_data_merge_hh$log_hh_income - 
+  did_moved_not_job_base$fitted.values + 
+  full_data_merge_hh$moved_not_for_job_times*as.numeric(did_moved_not_job_base$beta)
+
+test_ids <- sample(unique(full_data_merge_hh$pidp), length(unique(full_data_merge_hh$pidp))*test.fraction)
+data_test <- full_data_merge_hh[full_data_merge_hh$pidp %in% test_ids, ]
+data_train <- full_data_merge_hh[!(full_data_merge_hh$pidp %in% test_ids), ]
+
+data_train <- as.data.frame(scale(data_train %>% 
+                              dplyr::select(log_hh_income_demeaned, 
+                                            moved_not_for_job_times, 
+                                            log_hh_income.x, p_close_friends)))
+data_test <- as.data.frame(scale(data_test %>% 
+                              dplyr::select(log_hh_income_demeaned, 
+                                            moved_not_for_job_times, 
+                                            log_hh_income.x, p_close_friends)))
+
+Y <- as.vector(data_train$log_hh_income_demeaned)
+W <- as.vector(data_train$moved_not_for_job_times)
+X <- as.data.frame(data_train %>% dplyr::select(log_hh_income.x, p_close_friends))
+X.test <- as.data.frame(data_test %>% dplyr::select(log_hh_income.x, p_close_friends))
+  
+tau.forest <- causal_forest(X, Y, W, num.trees = 10000)
+  
+print(average_treatment_effect(tau.forest, target.sample = "all"))
+
+tau.hat.oob <- predict(tau.forest)
+qplot(tau.hat.oob$predictions)
+tau.hat <- predict(tau.forest, X.test, estimate.variance = TRUE)
+sigma.hat <- sqrt(tau.hat$variance.estimates)
+  
+df_to_plot <- data.frame(x = X.test$p_close_friends, y = tau.hat$predictions, 
+                           ci.min = tau.hat$predictions - 1.96 * sigma.hat, 
+                           ci.max = tau.hat$predictions + 1.96 * sigma.hat)
+  
+q10 = as.numeric(quantile(df_to_plot$x, probs = .1, na.rm = T))
+q50 = as.numeric(quantile(df_to_plot$x, probs = .5, na.rm = T))
+q90 = as.numeric(quantile(df_to_plot$x, probs = .9, na.rm = T))
+  
+ggplot(df_to_plot, aes(x = x, y = y)) + geom_line() + 
+  geom_ribbon(aes(ymin = ci.min, ymax = ci.max), alpha = 0.2) + xlab("N of close friends") + 
+  ylab("Estimated effect") + ggtitle("title") + 
+  geom_vline(xintercept = q10, linetype = "dashed") +
+  geom_vline(xintercept = q50, linetype = "dashed") +
+  geom_vline(xintercept = q90, linetype = "dashed")
+
+
+df_to_plot_2 <- data.frame(x1 = X.test$log_hh_income.x, x2 = X.test$p_close_friends, 
+                           y = tau.hat$predictions)
+    
+ggplot(df_to_plot_2, aes(x = x1, y = x2, color = y)) + 
+    geom_point() + xlab("HH Income (log)") + 
+      ylab("N. of close friends") + labs(color="Estimated effect")
+```

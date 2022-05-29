@@ -1,0 +1,726 @@
+---
+title: "moving_effects_event_study_regressions"
+author: "Adam Drożyński"
+date: "5/14/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(pacman)
+p_load(tictoc,tidyverse,dplyr,broom,ggplot2,clubSandwich,
+       data.table,matrixStats,magrittr,MASS,R.utils,grf,fixest,
+       stargazer,DT,furrr, lfe,estimatr,boot,plm,lmtest,multiwayvcov,
+       sandwich,glmnet,ISLR, parallel, haven, MatchIt, optmatch, ipw, AER, rdd)
+
+data_adults_merged_all = read.csv('data_adults_merged.csv')
+
+data_adults_merged <- data_adults_merged_all[data_adults_merged_all$job_income > 0, ]
+data_adults_merged$log_job_income = log(data_adults_merged$job_income)
+
+data_adults_merged_hh <- data_adults_merged_all[data_adults_merged_all$hh_income > 0, ]
+data_adults_merged_hh$hh_income_pp = data_adults_merged_hh$hh_income/data_adults_merged$hhsize
+data_adults_merged_hh$log_hh_income = log(data_adults_merged_hh$hh_income)
+data_adults_merged_hh$log_hh_income_pp = log(data_adults_merged_hh$hh_income_pp)
+
+data_households <- data_adults_merged_all %>% 
+  group_by(hidp) %>%
+  mutate(job_income_max_hh = max(job_income)) %>%
+  mutate(job_income_sum_hh = sum(job_income)) %>%
+  filter(job_income_max_hh > 0) %>%
+  mutate(job_income_max_prt = job_income_max_hh/hh_income) %>%
+  mutate(job_income_sum_prt = job_income_sum_hh/hh_income) %>%
+  filter(job_income_max_prt <= 1) %>%
+  filter(job_income_max_prt >= 0) %>%
+  filter(hhsize - nchild > 1) %>%
+  ungroup()
+
+plot_es_graph <- function(data){
+  ggplot(data = data, aes(x = period, y = coef)) +
+  geom_point() + 
+  geom_errorbar(aes(ymax = ci_up, ymin = ci_down)) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  geom_vline(xintercept = -1, linetype="dashed") + 
+  ggtitle("") + xlab("Years from Relocation") + ylab("Estimated coefficients") +
+  scale_x_continuous(breaks = c(-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5), 
+                     labels = c("-5", "-4", "-3", "-2", "-1", "0", "1", "2", "3", "4", "5")) +
+  theme_minimal()
+}
+
+```
+
+```{r}
+es_moved_not_job <- 
+  feols(log_job_income ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild+
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16, 
+       data_adults_merged, vcov = ~hidp)
+
+es_moved_not_career <- 
+  feols(log_job_income ~ moved_not_for_career_lead_5 + moved_not_for_career_lead_4 + 
+         moved_not_for_career_lead_3 + moved_not_for_career_lead_2 + 
+         moved_not_for_career + moved_not_for_career_lag_1 + 
+         moved_not_for_career_lag_2 + moved_not_for_career_lag_3 +
+         moved_not_for_career_lag_4 + moved_not_for_career_lag_5 
+       | year + pidp + age + gor + education_level + job_type + 
+         moved_not_for_career_bin_lag_1 + moved_not_for_career_bin_lead_1 + 
+         moved_not_for_career_bin_lag_2 + moved_not_for_career_bin_lead_2 + 
+         moved_not_for_career_bin_lag_3 + moved_not_for_career_bin_lead_3 + 
+         moved_not_for_career_bin_lag_4 + moved_not_for_career_bin_lead_4 + 
+         moved_not_for_career_bin_lag_5 + moved_not_for_career_bin_lead_5 + 
+         moved_not_for_career_bin_lag_6 + moved_not_for_career_bin_lead_6 + 
+         moved_not_for_career_bin_lag_7 + moved_not_for_career_bin_lead_7, 
+       data_adults_merged, vcov = ~hidp)
+
+
+
+es_moved_education <- 
+  feols(log_job_income ~ moved_for_education_lead_5 + moved_for_education_lead_4 + 
+         moved_for_education_lead_3 + moved_for_education_lead_2 + 
+         moved_for_education + moved_for_education_lag_1 + 
+         moved_for_education_lag_2 + moved_for_education_lag_3 +
+         moved_for_education_lag_4 + moved_for_education_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_education_bin_lag_1 + moved_for_education_bin_lead_1 + 
+         moved_for_education_bin_lag_2 + moved_for_education_bin_lead_2 + 
+         moved_for_education_bin_lag_3 + moved_for_education_bin_lead_3 + 
+         moved_for_education_bin_lag_4 + moved_for_education_bin_lead_4 + 
+         moved_for_education_bin_lag_5 + moved_for_education_bin_lead_5 + 
+         moved_for_education_bin_lag_6 + moved_for_education_bin_lead_6, 
+       data_adults_merged, vcov = ~hidp)
+
+es_moved_family <- 
+  feols(log_job_income ~ moved_for_family_lead_5 + moved_for_family_lead_4 + 
+         moved_for_family_lead_3 + moved_for_family_lead_2 + 
+         moved_for_family + moved_for_family_lag_1 + 
+         moved_for_family_lag_2 + moved_for_family_lag_3 +
+         moved_for_family_lag_4 + moved_for_family_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_family_bin_lag_1 + moved_for_family_bin_lead_1 + 
+         moved_for_family_bin_lag_2 + moved_for_family_bin_lead_2 + 
+         moved_for_family_bin_lag_3 + moved_for_family_bin_lead_3 + 
+         moved_for_family_bin_lag_4 + moved_for_family_bin_lead_4 + 
+         moved_for_family_bin_lag_5 + moved_for_family_bin_lead_5, 
+       data_adults_merged, vcov = ~hidp)
+
+es_moved_housing <- 
+  feols(log_job_income ~ moved_for_housing_lead_5 + moved_for_housing_lead_4 + 
+         moved_for_housing_lead_3 + moved_for_housing_lead_2 + 
+         moved_for_housing + moved_for_housing_lag_1 + 
+         moved_for_housing_lag_2 + moved_for_housing_lag_3 +
+         moved_for_housing_lag_4 + moved_for_housing_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_housing_bin_lag_1 + moved_for_housing_bin_lead_1 + 
+         moved_for_housing_bin_lag_2 + moved_for_housing_bin_lead_2 + 
+         moved_for_housing_bin_lag_3 + moved_for_housing_bin_lead_3 + 
+         moved_for_housing_bin_lag_4 + moved_for_housing_bin_lead_4 + 
+         moved_for_housing_bin_lag_5 + moved_for_housing_bin_lead_5 +
+         moved_for_housing_bin_lag_6 + moved_for_housing_bin_lead_6, 
+       data_adults_merged, vcov = ~hidp)
+
+es_moved_area <- 
+  feols(log_job_income ~ moved_for_area_lead_5 + moved_for_area_lead_4 + 
+         moved_for_area_lead_3 + moved_for_area_lead_2 + 
+         moved_for_area + moved_for_area_lag_1 + 
+         moved_for_area_lag_2 + moved_for_area_lag_3 +
+         moved_for_area_lag_4 + moved_for_area_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_area_bin_lag_1 + moved_for_area_bin_lead_1 + 
+         moved_for_area_bin_lag_2 + moved_for_area_bin_lead_2 + 
+         moved_for_area_bin_lag_3 + moved_for_area_bin_lead_3, 
+       data_adults_merged, vcov = ~hidp)
+
+
+
+etable(es_moved_not_job, es_moved_not_career, 
+       es_moved_education, es_moved_family, es_moved_housing, es_moved_area)
+etable(es_moved_education, es_moved_family, es_moved_housing, es_moved_area, tex = T)
+```
+
+```{r}
+df_to_plot_not_job = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_job$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_job))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_job))$`97.5 %`)
+
+plot_es_graph(df_to_plot_not_job)
+ggsave("Figures/es_not_job.png")
+ggsave("Figures/es_not_job.pdf")
+
+df_to_plot_not_career = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_career$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_career))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_career))$`97.5 %`)
+
+plot_es_graph(df_to_plot_not_career)
+ggsave("Figures/es_not_career.png")
+ggsave("Figures/es_not_career.pdf")
+
+df_to_plot_job_family = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_family$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_family))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_family))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_family)
+ggsave("Figures/es_family.png")
+ggsave("Figures/es_family.pdf")
+
+df_to_plot_job_edu = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_education$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_education))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_education))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_edu)
+ggsave("Figures/es_edu.png")
+ggsave("Figures/es_edu.pdf")
+
+df_to_plot_job_housing = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_housing$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_housing))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_housing))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_housing)
+ggsave("Figures/es_housing.png")
+ggsave("Figures/es_housing.pdf")
+
+
+df_to_plot_job_area = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_area$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_area))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_area))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_area)
+ggsave("Figures/es_area.png")
+ggsave("Figures/es_area.pdf")
+```
+
+
+
+```{r}
+es_moved_not_job_hh <- 
+  feols(log_hh_income_pp ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16, 
+       data_adults_merged_hh, vcov = ~hidp)
+
+es_moved_not_career_hh <- 
+  feols(log_hh_income_pp ~ moved_not_for_career_lead_5 + moved_not_for_career_lead_4 + 
+         moved_not_for_career_lead_3 + moved_not_for_career_lead_2 + 
+         moved_not_for_career + moved_not_for_career_lag_1 + 
+         moved_not_for_career_lag_2 + moved_not_for_career_lag_3 +
+         moved_not_for_career_lag_4 + moved_not_for_career_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_not_for_career_bin_lag_1 + moved_not_for_career_bin_lead_1 + 
+         moved_not_for_career_bin_lag_2 + moved_not_for_career_bin_lead_2 + 
+         moved_not_for_career_bin_lag_3 + moved_not_for_career_bin_lead_3 + 
+         moved_not_for_career_bin_lag_4 + moved_not_for_career_bin_lead_4 + 
+         moved_not_for_career_bin_lag_5 + moved_not_for_career_bin_lead_5 + 
+         moved_not_for_career_bin_lag_6 + moved_not_for_career_bin_lead_6 + 
+         moved_not_for_career_bin_lag_7 + moved_not_for_career_bin_lead_7, 
+       data_adults_merged_hh, vcov = ~hidp)
+
+
+
+es_moved_education_hh <- 
+  feols(log_hh_income_pp ~ moved_for_education_lead_5 + moved_for_education_lead_4 + 
+         moved_for_education_lead_3 + moved_for_education_lead_2 + 
+         moved_for_education + moved_for_education_lag_1 + 
+         moved_for_education_lag_2 + moved_for_education_lag_3 +
+         moved_for_education_lag_4 + moved_for_education_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_education_bin_lag_1 + moved_for_education_bin_lead_1 + 
+         moved_for_education_bin_lag_2 + moved_for_education_bin_lead_2 + 
+         moved_for_education_bin_lag_3 + moved_for_education_bin_lead_3 + 
+         moved_for_education_bin_lag_4 + moved_for_education_bin_lead_4 + 
+         moved_for_education_bin_lag_5 + moved_for_education_bin_lead_5 + 
+         moved_for_education_bin_lag_6 + moved_for_education_bin_lead_6, 
+       data_adults_merged_hh, vcov = ~hidp)
+
+es_moved_family_hh <- 
+  feols(log_hh_income_pp ~ moved_for_family_lead_5 + moved_for_family_lead_4 + 
+         moved_for_family_lead_3 + moved_for_family_lead_2 + 
+         moved_for_family + moved_for_family_lag_1 + 
+         moved_for_family_lag_2 + moved_for_family_lag_3 +
+         moved_for_family_lag_4 + moved_for_family_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_family_bin_lag_1 + moved_for_family_bin_lead_1 + 
+         moved_for_family_bin_lag_2 + moved_for_family_bin_lead_2 + 
+         moved_for_family_bin_lag_3 + moved_for_family_bin_lead_3 + 
+         moved_for_family_bin_lag_4 + moved_for_family_bin_lead_4 + 
+         moved_for_family_bin_lag_5 + moved_for_family_bin_lead_5, 
+       data_adults_merged_hh, vcov = ~hidp)
+
+es_moved_housing_hh <- 
+  feols(log_hh_income_pp ~ moved_for_housing_lead_5 + moved_for_housing_lead_4 + 
+         moved_for_housing_lead_3 + moved_for_housing_lead_2 + 
+         moved_for_housing + moved_for_housing_lag_1 + 
+         moved_for_housing_lag_2 + moved_for_housing_lag_3 +
+         moved_for_housing_lag_4 + moved_for_housing_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_housing_bin_lag_1 + moved_for_housing_bin_lead_1 + 
+         moved_for_housing_bin_lag_2 + moved_for_housing_bin_lead_2 + 
+         moved_for_housing_bin_lag_3 + moved_for_housing_bin_lead_3 + 
+         moved_for_housing_bin_lag_4 + moved_for_housing_bin_lead_4 + 
+         moved_for_housing_bin_lag_5 + moved_for_housing_bin_lead_5 +
+         moved_for_housing_bin_lag_6 + moved_for_housing_bin_lead_6, 
+       data_adults_merged_hh, vcov = ~hidp)
+
+es_moved_area_hh <- 
+  feols(log_hh_income_pp ~ moved_for_area_lead_5 + moved_for_area_lead_4 + 
+         moved_for_area_lead_3 + moved_for_area_lead_2 + 
+         moved_for_area + moved_for_area_lag_1 + 
+         moved_for_area_lag_2 + moved_for_area_lag_3 +
+         moved_for_area_lag_4 + moved_for_area_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_area_bin_lag_1 + moved_for_area_bin_lead_1 + 
+         moved_for_area_bin_lag_2 + moved_for_area_bin_lead_2 + 
+         moved_for_area_bin_lag_3 + moved_for_area_bin_lead_3, 
+       data_adults_merged_hh, vcov = ~hidp)
+
+etable(es_moved_not_job_hh, es_moved_not_career_hh, 
+       es_moved_education_hh, es_moved_family_hh, es_moved_housing_hh, es_moved_area_hh)
+etable(es_moved_education_hh, es_moved_family_hh, es_moved_housing_hh, es_moved_area_hh, tex = T)
+```
+
+
+
+```{r}
+df_to_plot_not_job_hh = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_job_hh$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_job_hh))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_job_hh))$`97.5 %`)
+
+plot_es_graph(df_to_plot_not_job_hh)
+ggsave("Figures/es_not_job_hh.png")
+ggsave("Figures/es_not_job_hh.pdf")
+
+df_to_plot_not_career_hh = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_career_hh$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_career_hh))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_career_hh))$`97.5 %`)
+
+plot_es_graph(df_to_plot_not_career_hh)
+ggsave("Figures/es_not_career_hh.png")
+ggsave("Figures/es_not_career_hh.pdf")
+
+df_to_plot_job_family_hh = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_family_hh$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_family_hh))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_family_hh))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_family_hh)
+ggsave("Figures/es_family_hh.png")
+ggsave("Figures/es_family_hh.pdf")
+
+df_to_plot_job_edu_hh = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_education_hh$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_education_hh))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_education_hh))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_edu_hh)
+ggsave("Figures/es_edu_hh.png")
+ggsave("Figures/es_edu_hh.pdf")
+
+df_to_plot_job_housing_hh = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_housing_hh$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_housing_hh))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_housing_hh))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_housing_hh)
+ggsave("Figures/es_housing_hh.png")
+ggsave("Figures/es_housing_hh.pdf")
+
+
+df_to_plot_job_area_hh = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_area_hh$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_area_hh))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_area_hh))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_area_hh)
+ggsave("Figures/es_area_hh.png")
+ggsave("Figures/es_area_hh.pdf")
+```
+
+
+
+```{r}
+es_moved_not_job_emp <- 
+  feols(employed ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16, 
+       data_adults_merged_all, vcov = ~hidp)
+
+es_moved_not_career_emp <- 
+  feols(employed ~ moved_not_for_career_lead_5 + moved_not_for_career_lead_4 + 
+         moved_not_for_career_lead_3 + moved_not_for_career_lead_2 + 
+         moved_not_for_career + moved_not_for_career_lag_1 + 
+         moved_not_for_career_lag_2 + moved_not_for_career_lag_3 +
+         moved_not_for_career_lag_4 + moved_not_for_career_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_not_for_career_bin_lag_1 + moved_not_for_career_bin_lead_1 + 
+         moved_not_for_career_bin_lag_2 + moved_not_for_career_bin_lead_2 + 
+         moved_not_for_career_bin_lag_3 + moved_not_for_career_bin_lead_3 + 
+         moved_not_for_career_bin_lag_4 + moved_not_for_career_bin_lead_4 + 
+         moved_not_for_career_bin_lag_5 + moved_not_for_career_bin_lead_5 + 
+         moved_not_for_career_bin_lag_6 + moved_not_for_career_bin_lead_6 + 
+         moved_not_for_career_bin_lag_7 + moved_not_for_career_bin_lead_7, 
+       data_adults_merged_all, vcov = ~hidp)
+
+
+
+es_moved_education_emp <- 
+  feols(employed ~ moved_for_education_lead_5 + moved_for_education_lead_4 + 
+         moved_for_education_lead_3 + moved_for_education_lead_2 + 
+         moved_for_education + moved_for_education_lag_1 + 
+         moved_for_education_lag_2 + moved_for_education_lag_3 +
+         moved_for_education_lag_4 + moved_for_education_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_education_bin_lag_1 + moved_for_education_bin_lead_1 + 
+         moved_for_education_bin_lag_2 + moved_for_education_bin_lead_2 + 
+         moved_for_education_bin_lag_3 + moved_for_education_bin_lead_3 + 
+         moved_for_education_bin_lag_4 + moved_for_education_bin_lead_4 + 
+         moved_for_education_bin_lag_5 + moved_for_education_bin_lead_5 + 
+         moved_for_education_bin_lag_6 + moved_for_education_bin_lead_6, 
+       data_adults_merged_all, vcov = ~hidp)
+
+es_moved_family_emp <- 
+  feols(employed ~ moved_for_family_lead_5 + moved_for_family_lead_4 + 
+         moved_for_family_lead_3 + moved_for_family_lead_2 + 
+         moved_for_family + moved_for_family_lag_1 + 
+         moved_for_family_lag_2 + moved_for_family_lag_3 +
+         moved_for_family_lag_4 + moved_for_family_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_family_bin_lag_1 + moved_for_family_bin_lead_1 + 
+         moved_for_family_bin_lag_2 + moved_for_family_bin_lead_2 + 
+         moved_for_family_bin_lag_3 + moved_for_family_bin_lead_3 + 
+         moved_for_family_bin_lag_4 + moved_for_family_bin_lead_4 + 
+         moved_for_family_bin_lag_5 + moved_for_family_bin_lead_5, 
+       data_adults_merged_all, vcov = ~hidp)
+
+es_moved_housing_emp <- 
+  feols(employed ~ moved_for_housing_lead_5 + moved_for_housing_lead_4 + 
+         moved_for_housing_lead_3 + moved_for_housing_lead_2 + 
+         moved_for_housing + moved_for_housing_lag_1 + 
+         moved_for_housing_lag_2 + moved_for_housing_lag_3 +
+         moved_for_housing_lag_4 + moved_for_housing_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_housing_bin_lag_1 + moved_for_housing_bin_lead_1 + 
+         moved_for_housing_bin_lag_2 + moved_for_housing_bin_lead_2 + 
+         moved_for_housing_bin_lag_3 + moved_for_housing_bin_lead_3 + 
+         moved_for_housing_bin_lag_4 + moved_for_housing_bin_lead_4 + 
+         moved_for_housing_bin_lag_5 + moved_for_housing_bin_lead_5 +
+         moved_for_housing_bin_lag_6 + moved_for_housing_bin_lead_6, 
+       data_adults_merged_all, vcov = ~hidp)
+
+es_moved_area_emp <- 
+  feols(employed ~ moved_for_area_lead_5 + moved_for_area_lead_4 + 
+         moved_for_area_lead_3 + moved_for_area_lead_2 + 
+         moved_for_area + moved_for_area_lag_1 + 
+         moved_for_area_lag_2 + moved_for_area_lag_3 +
+         moved_for_area_lag_4 + moved_for_area_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_area_bin_lag_1 + moved_for_area_bin_lead_1 + 
+         moved_for_area_bin_lag_2 + moved_for_area_bin_lead_2 + 
+         moved_for_area_bin_lag_3 + moved_for_area_bin_lead_3, 
+       data_adults_merged_all, vcov = ~hidp)
+
+etable(es_moved_not_job_emp, es_moved_not_career_emp, 
+       es_moved_education_emp, es_moved_family_emp, es_moved_housing_emp, es_moved_area_emp)
+etable(es_moved_education_emp, es_moved_family_emp, es_moved_housing_emp, es_moved_area_emp, 
+       tex = T)
+```
+
+
+
+```{r}
+df_to_plot_not_job_emp = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_job_emp$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_job_emp))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_job_emp))$`97.5 %`)
+
+plot_es_graph(df_to_plot_not_job_emp)
+ggsave("Figures/es_not_job_emp.png")
+ggsave("Figures/es_not_job_emp.pdf")
+
+df_to_plot_not_career_emp = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_career_emp$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_career_emp))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_career_emp))$`97.5 %`)
+
+plot_es_graph(df_to_plot_not_career_emp)
+ggsave("Figures/es_not_career_emp.png")
+ggsave("Figures/es_not_career_emp.pdf")
+
+df_to_plot_job_family_emp = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_family_emp$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_family_emp))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_family_emp))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_family_emp)
+ggsave("Figures/es_family_emp.png")
+ggsave("Figures/es_family_emp.pdf")
+
+df_to_plot_job_edu_emp = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_education_emp$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_education_emp))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_education_emp))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_edu_emp)
+ggsave("Figures/es_edu_emp.png")
+ggsave("Figures/es_edu_emp.pdf")
+
+df_to_plot_job_housing_emp = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_housing_emp$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_housing_emp))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_housing_emp))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_housing_emp)
+ggsave("Figures/es_housing_emp.png")
+ggsave("Figures/es_housing_emp.pdf")
+
+
+df_to_plot_job_area_emp = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_area_emp$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_area_emp))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_area_emp))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_area_emp)
+ggsave("Figures/es_area_emp.png")
+ggsave("Figures/es_area_emp.pdf")
+```
+
+
+
+```{r}
+es_moved_not_job_dep <- 
+  feols(job_income_max_prt ~ moved_not_for_job_lead_5 + moved_not_for_job_lead_4 + 
+         moved_not_for_job_lead_3 + moved_not_for_job_lead_2 + 
+         moved_not_for_job + moved_not_for_job_lag_1 + 
+         moved_not_for_job_lag_2 + moved_not_for_job_lag_3 +
+         moved_not_for_job_lag_4 + moved_not_for_job_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild +
+         moved_not_for_job_bin_lag_1 + moved_not_for_job_bin_lead_1 + 
+         moved_not_for_job_bin_lag_2 + moved_not_for_job_bin_lead_2 + 
+         moved_not_for_job_bin_lag_3 + moved_not_for_job_bin_lead_3 + 
+         moved_not_for_job_bin_lag_4 + moved_not_for_job_bin_lead_4 + 
+         moved_not_for_job_bin_lag_5 + moved_not_for_job_bin_lead_5 + 
+         moved_not_for_job_bin_lag_6 + moved_not_for_job_bin_lead_6 + 
+         moved_not_for_job_bin_lag_7 + moved_not_for_job_bin_lead_7 + 
+         moved_not_for_job_bin_lag_8 + moved_not_for_job_bin_lead_8 + 
+         moved_not_for_job_bin_lag_9 + moved_not_for_job_bin_lead_9 + 
+         moved_not_for_job_bin_lag_10 + moved_not_for_job_bin_lead_10 + 
+         moved_not_for_job_bin_lag_11 + moved_not_for_job_bin_lead_11 + 
+         moved_not_for_job_bin_lag_12 + moved_not_for_job_bin_lead_12 + 
+         moved_not_for_job_bin_lag_13 + moved_not_for_job_bin_lead_13 + 
+         moved_not_for_job_bin_lag_14 + moved_not_for_job_bin_lead_14 + 
+         moved_not_for_job_bin_lag_15 + moved_not_for_job_bin_lead_15 +
+         moved_not_for_job_bin_lag_16 + moved_not_for_job_bin_lead_16, 
+       data_households, vcov = ~hidp)
+
+es_moved_not_career_dep <- 
+  feols(job_income_max_prt ~ moved_not_for_career_lead_5 + moved_not_for_career_lead_4 + 
+         moved_not_for_career_lead_3 + moved_not_for_career_lead_2 + 
+         moved_not_for_career + moved_not_for_career_lag_1 + 
+         moved_not_for_career_lag_2 + moved_not_for_career_lag_3 +
+         moved_not_for_career_lag_4 + moved_not_for_career_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_not_for_career_bin_lag_1 + moved_not_for_career_bin_lead_1 + 
+         moved_not_for_career_bin_lag_2 + moved_not_for_career_bin_lead_2 + 
+         moved_not_for_career_bin_lag_3 + moved_not_for_career_bin_lead_3 + 
+         moved_not_for_career_bin_lag_4 + moved_not_for_career_bin_lead_4 + 
+         moved_not_for_career_bin_lag_5 + moved_not_for_career_bin_lead_5 + 
+         moved_not_for_career_bin_lag_6 + moved_not_for_career_bin_lead_6 + 
+         moved_not_for_career_bin_lag_7 + moved_not_for_career_bin_lead_7, 
+       data_households, vcov = ~hidp)
+
+
+
+es_moved_education_dep <- 
+  feols(job_income_max_prt ~ moved_for_education_lead_5 + moved_for_education_lead_4 + 
+         moved_for_education_lead_3 + moved_for_education_lead_2 + 
+         moved_for_education + moved_for_education_lag_1 + 
+         moved_for_education_lag_2 + moved_for_education_lag_3 +
+         moved_for_education_lag_4 + moved_for_education_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_education_bin_lag_1 + moved_for_education_bin_lead_1 + 
+         moved_for_education_bin_lag_2 + moved_for_education_bin_lead_2 + 
+         moved_for_education_bin_lag_3 + moved_for_education_bin_lead_3 + 
+         moved_for_education_bin_lag_4 + moved_for_education_bin_lead_4 + 
+         moved_for_education_bin_lag_5 + moved_for_education_bin_lead_5 + 
+         moved_for_education_bin_lag_6 + moved_for_education_bin_lead_6, 
+       data_households, vcov = ~hidp)
+
+es_moved_family_dep <- 
+  feols(job_income_max_prt ~ moved_for_family_lead_5 + moved_for_family_lead_4 + 
+         moved_for_family_lead_3 + moved_for_family_lead_2 + 
+         moved_for_family + moved_for_family_lag_1 + 
+         moved_for_family_lag_2 + moved_for_family_lag_3 +
+         moved_for_family_lag_4 + moved_for_family_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_family_bin_lag_1 + moved_for_family_bin_lead_1 + 
+         moved_for_family_bin_lag_2 + moved_for_family_bin_lead_2 + 
+         moved_for_family_bin_lag_3 + moved_for_family_bin_lead_3 + 
+         moved_for_family_bin_lag_4 + moved_for_family_bin_lead_4 + 
+         moved_for_family_bin_lag_5 + moved_for_family_bin_lead_5, 
+       data_households, vcov = ~hidp)
+
+es_moved_housing_dep <- 
+  feols(job_income_max_prt ~ moved_for_housing_lead_5 + moved_for_housing_lead_4 + 
+         moved_for_housing_lead_3 + moved_for_housing_lead_2 + 
+         moved_for_housing + moved_for_housing_lag_1 + 
+         moved_for_housing_lag_2 + moved_for_housing_lag_3 +
+         moved_for_housing_lag_4 + moved_for_housing_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_housing_bin_lag_1 + moved_for_housing_bin_lead_1 + 
+         moved_for_housing_bin_lag_2 + moved_for_housing_bin_lead_2 + 
+         moved_for_housing_bin_lag_3 + moved_for_housing_bin_lead_3 + 
+         moved_for_housing_bin_lag_4 + moved_for_housing_bin_lead_4 + 
+         moved_for_housing_bin_lag_5 + moved_for_housing_bin_lead_5 +
+         moved_for_housing_bin_lag_6 + moved_for_housing_bin_lead_6, 
+       data_households, vcov = ~hidp)
+
+es_moved_area_dep <- 
+  feols(job_income_max_prt ~ moved_for_area_lead_5 + moved_for_area_lead_4 + 
+         moved_for_area_lead_3 + moved_for_area_lead_2 + 
+         moved_for_area + moved_for_area_lag_1 + 
+         moved_for_area_lag_2 + moved_for_area_lag_3 +
+         moved_for_area_lag_4 + moved_for_area_lag_5 
+       | year + pidp + age + gor + education_level + job_type + hhsize + nchild + 
+         moved_for_area_bin_lag_1 + moved_for_area_bin_lead_1 + 
+         moved_for_area_bin_lag_2 + moved_for_area_bin_lead_2 + 
+         moved_for_area_bin_lag_3 + moved_for_area_bin_lead_3, 
+       data_households, vcov = ~hidp)
+
+etable(es_moved_not_job_dep, es_moved_not_career_dep, 
+       es_moved_education_dep, es_moved_family_dep, es_moved_housing_dep, es_moved_area_dep)
+etable(es_moved_education_dep, es_moved_family_dep, es_moved_housing_dep, es_moved_area_dep, 
+       tex = T)
+```
+
+
+
+```{r}
+df_to_plot_not_job_dep = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_job_dep$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_job_dep))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_job_dep))$`97.5 %`)
+
+plot_es_graph(df_to_plot_not_job_dep)
+ggsave("Figures/es_not_job_dep.png")
+ggsave("Figures/es_not_job_dep.pdf")
+
+df_to_plot_not_career_dep = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_not_career_dep$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_not_career_dep))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_not_career_dep))$`97.5 %`)
+
+plot_es_graph(df_to_plot_not_career_dep)
+ggsave("Figures/es_not_career_dep.png")
+ggsave("Figures/es_not_career_dep.pdf")
+
+df_to_plot_job_family_dep = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_family_dep$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_family_dep))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_family_dep))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_family_dep)
+ggsave("Figures/es_family_dep.png")
+ggsave("Figures/es_family_dep.pdf")
+
+df_to_plot_job_edu_dep = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_education_dep$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_education_dep))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_education_dep))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_edu_dep)
+ggsave("Figures/es_edu_dep.png")
+ggsave("Figures/es_edu_dep.pdf")
+
+df_to_plot_job_housing_dep = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_housing_dep$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_housing_dep))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_housing_dep))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_housing_dep)
+ggsave("Figures/es_housing_dep.png")
+ggsave("Figures/es_housing_dep.pdf")
+
+
+df_to_plot_job_area_dep = data.frame(period = c(-5, -4, -3, -2, 0, 1, 2, 3, 4, 5), 
+             coef = es_moved_area_dep$coefficients, 
+             ci_down = as.data.frame(confint(es_moved_area_dep))$`2.5 %`,
+             ci_up = as.data.frame(confint(es_moved_area_dep))$`97.5 %`)
+
+plot_es_graph(df_to_plot_job_area_dep)
+ggsave("Figures/es_area_dep.png")
+ggsave("Figures/es_area_dep.pdf")
+```
+
+
+
+Table going to the main text
+```{r}
+
+etable(es_moved_not_job, 
+       es_moved_not_job_hh, 
+       es_moved_not_job_emp, 
+       es_moved_not_job_dep, tex = T)
+```

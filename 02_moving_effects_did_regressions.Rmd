@@ -1,0 +1,327 @@
+---
+title: "moving_regressions"
+author: "Adam Drożyński"
+date: "4/15/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(pacman)
+p_load(tictoc,tidyverse,dplyr,broom,ggplot2,clubSandwich,
+       data.table,matrixStats,magrittr,MASS,R.utils,grf,
+       stargazer,DT,furrr, lfe,estimatr,boot,plm,lmtest,multiwayvcov,
+       sandwich,glmnet,ISLR, parallel, haven, MatchIt, optmatch, ipw, AER, rdd)
+
+data_adults_merged_all = read.csv('data_adults_merged.csv')
+
+data_adults_merged <- data_adults_merged_all[data_adults_merged_all$job_income > 0, ]
+data_adults_merged$log_job_income = log(data_adults_merged$job_income)
+
+data_adults_merged_hh <- data_adults_merged_all[data_adults_merged_all$hh_income > 0, ]
+data_adults_merged_hh$hh_income_pp = data_adults_merged_hh$hh_income/data_adults_merged$hhsize
+data_adults_merged_hh$log_hh_income = log(data_adults_merged_hh$hh_income)
+data_adults_merged_hh$log_hh_income_pp = log(data_adults_merged_hh$hh_income_pp)
+
+data_households <- data_adults_merged_all %>% 
+  group_by(hidp) %>%
+  mutate(job_income_max_hh = max(job_income)) %>%
+  filter(job_income_max_hh > 0) %>%
+  mutate(job_income_max_prt = job_income_max_hh/hh_income) %>%
+  filter(job_income_max_prt <= 1) %>%
+  filter(job_income_max_prt >= 0) %>%
+  ungroup()
+```
+
+Moving - basic regressions
+```{r}
+did_moved_not_job_did_age <- 
+  felm(log_job_income ~ moved_not_for_job_times | 
+         year + pidp + age | 0 | hidp, 
+       data = data_adults_merged)
+did_moved_not_job_did_age_place <- 
+  felm(log_job_income ~ moved_not_for_job_times | 
+         year + pidp + age + gor | 0 | hidp, 
+       data = data_adults_merged)
+did_moved_not_job_did_age_place_occ <- 
+  felm(log_job_income ~ moved_not_for_job_times | 
+         year + pidp + age + gor + education_level + job_type | 0 | hidp, 
+       data = data_adults_merged)
+did_moved_not_job <- 
+  felm(log_job_income ~ moved_not_for_job_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged)
+
+did_moved_not_job_hh_income_did_age <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_times | 
+         year + pidp + age | 0 | hidp, 
+       data = data_adults_merged_hh)
+did_moved_not_job_hh_income_did_age_place <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_times | 
+         year + pidp + age + gor | 0 | hidp, 
+       data = data_adults_merged_hh)
+did_moved_not_job_hh_income_did_age_place_occ <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_times | 
+         year + pidp + age + gor + education_level + job_type | 0 | hidp, 
+       data = data_adults_merged_hh)
+did_moved_not_job_hh_income <- 
+  felm(log_hh_income_pp ~ moved_not_for_job_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_hh)
+
+did_moved_not_job_emp_did <- 
+  felm(employed ~ moved_not_for_job_times | 
+         year + pidp | 0 | hidp, 
+       data = data_adults_merged_all)
+did_moved_not_job_emp_did_age <- 
+  felm(employed ~ moved_not_for_job_times | 
+         year + pidp + age | 0 | hidp, 
+       data = data_adults_merged_all)
+did_moved_not_job_emp_did_age_place <- 
+  felm(employed ~ moved_not_for_job_times | 
+         year + pidp + age + gor | 0 | hidp, 
+       data = data_adults_merged_all)
+did_moved_not_job_emp_did_age_place_occ <- 
+  felm(employed ~ moved_not_for_job_times | 
+         year + pidp + age + gor + education_level + job_type | 0 | hidp, 
+       data = data_adults_merged_all)
+did_moved_not_job_emp <- 
+  felm(employed ~ moved_not_for_job_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_all)
+
+did_moved_not_job_dep_did <- 
+  felm(job_income_max_prt ~ moved_not_for_job_times | 
+         year + pidp | 0 | hidp, 
+       data = data_households)
+did_moved_not_job_dep_did_age <- 
+  felm(job_income_max_prt ~ moved_not_for_job_times | 
+         year + pidp + age | 0 | hidp, 
+       data = data_households)
+did_moved_not_job_dep_did_age_place <- 
+  felm(job_income_max_prt ~ moved_not_for_job_times | 
+         year + pidp + age + gor | 0 | hidp, 
+       data = data_households)
+did_moved_not_job_dep_did_age_place_occ <- 
+  felm(job_income_max_prt ~ moved_not_for_job_times | 
+         year + pidp + age + gor + education_level + job_type | 0 | hidp, 
+       data = data_households)
+did_moved_not_job_dep <- 
+  felm(job_income_max_prt ~ moved_not_for_job_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_households)
+
+
+# Main text tables
+stargazer(did_moved_not_job_did_age, 
+          did_moved_not_job_did_age_place,
+          did_moved_not_job_did_age_place_occ, 
+          did_moved_not_job,
+          omit.stat = c("adj.rsq","ser", "f"), type = 'text')
+stargazer(did_moved_not_job_hh_income_did_age, 
+          did_moved_not_job_hh_income_did_age_place,
+          did_moved_not_job_hh_income_did_age_place_occ, 
+          did_moved_not_job_hh_income,
+          omit.stat = c("adj.rsq","ser", "f"), type = 'text')
+stargazer(did_moved_not_job_emp_did_age, 
+          did_moved_not_job_emp_did_age_place,
+          did_moved_not_job_emp_did_age_place_occ, 
+          did_moved_not_job_emp,
+          omit.stat = c("adj.rsq","ser", "f"), type = 'text')
+stargazer(did_moved_not_job_dep_did_age, 
+          did_moved_not_job_dep_did_age_place,
+          did_moved_not_job_dep_did_age_place_occ, 
+          did_moved_not_job_dep,
+          omit.stat = c("adj.rsq","ser", "f"), type = 'text')
+
+stargazer(did_moved_not_job_did_age, 
+          did_moved_not_job_did_age_place,
+          did_moved_not_job_did_age_place_occ, 
+          did_moved_not_job,
+          title='Effects of Moving on Job Income',
+          dep.var.labels = c('Job Income (log)'),
+          covariate.labels = c('Number of relocations'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+stargazer(did_moved_not_job_hh_income_did_age, 
+          did_moved_not_job_hh_income_did_age_place,
+          did_moved_not_job_hh_income_did_age_place_occ, 
+          did_moved_not_job_hh_income,
+          title='Effects of Moving on Per Capita Household Income',
+          dep.var.labels = c('Per Capita Household Income (log)'),
+          covariate.labels = c('Number of relocations'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+stargazer(did_moved_not_job_emp_did_age, 
+          did_moved_not_job_emp_did_age_place,
+          did_moved_not_job_emp_did_age_place_occ, 
+          did_moved_not_job_emp,
+          title='Effects of Moving on Employment',
+          dep.var.labels = c('Employment'),
+          covariate.labels = c('Number of relocations'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+stargazer(did_moved_not_job_dep_did_age, 
+          did_moved_not_job_dep_did_age_place,
+          did_moved_not_job_dep_did_age_place_occ, 
+          did_moved_not_job_dep,
+          title='Effects of Moving on Dependance on Main Provider',
+          dep.var.labels = c('Dependance on Main Provider'),
+          covariate.labels = c('Number of relocations'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+```
+
+
+```{r}
+# Moving - by reason of moving
+did_moved_family <- 
+  felm(log_job_income ~ moved_for_family_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged)
+did_moved_education <- 
+  felm(log_job_income ~ moved_for_education_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged)
+did_moved_housing <- 
+  felm(log_job_income ~ moved_for_housing_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged)
+did_moved_area <- 
+  felm(log_job_income ~ moved_for_area_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged)
+
+
+did_moved_family_hh <- 
+  felm(log_hh_income_pp ~ moved_for_family_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_hh)
+did_moved_education_hh <- 
+  felm(log_hh_income_pp ~ moved_for_education_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_hh)
+did_moved_housing_hh <- 
+  felm(log_hh_income_pp ~ moved_for_housing_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_hh)
+did_moved_area_hh <- 
+  felm(log_hh_income_pp ~ moved_for_area_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_hh)
+
+
+did_moved_family_emp <- 
+  felm(employed ~ moved_for_family_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_all)
+did_moved_education_emp <- 
+  felm(employed ~ moved_for_education_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_all)
+did_moved_housing_emp <- 
+  felm(employed ~ moved_for_housing_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_all)
+did_moved_area_emp <- 
+  felm(employed ~ moved_for_area_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_all)
+
+
+did_moved_family_dep <- 
+  felm(job_income_max_prt ~ moved_for_family_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_households)
+did_moved_education_dep <- 
+  felm(job_income_max_prt ~ moved_for_education_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_households)
+did_moved_housing_dep <- 
+  felm(job_income_max_prt ~ moved_for_housing_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_households)
+did_moved_area_dep <- 
+  felm(job_income_max_prt ~ moved_for_area_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_households)
+
+# Robustness checks
+
+did_moved_job_not_mentioned <- 
+  felm(log_job_income ~ moved_job_not_mentioned_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged)
+did_moved_job_not_mentioned_hh <- 
+  felm(log_hh_income_pp ~ moved_job_not_mentioned_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_hh)
+did_moved_job_not_mentioned_emp <- 
+  felm(employed ~ moved_job_not_mentioned_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_adults_merged_all)
+did_moved_job_not_mentioned_dep <- 
+  felm(job_income_max_prt ~ moved_job_not_mentioned_times | 
+         year + pidp + age + gor + education_level + job_type + hhsize + nchild | 0 | hidp, 
+       data = data_households)
+
+# Appendix tables
+stargazer(did_moved_family, did_moved_education, did_moved_housing, did_moved_area, 
+          omit.stat = c("adj.rsq","ser", "f"), type = 'text')
+stargazer(did_moved_family_hh, did_moved_education_hh, did_moved_housing_hh, did_moved_area_hh, 
+          omit.stat = c("adj.rsq","ser", "f"), type = 'text')
+stargazer(did_moved_family_emp, did_moved_education_emp, did_moved_housing_emp, did_moved_area_emp,
+          omit.stat = c("adj.rsq","ser", "f"), type = 'text')
+stargazer(did_moved_family_dep, did_moved_education_dep, did_moved_housing_dep, did_moved_area_dep,
+          omit.stat = c("adj.rsq","ser", "f"), type = 'text')
+stargazer(did_moved_job_not_mentioned, did_moved_job_not_mentioned_hh,
+          did_moved_job_not_mentioned_emp,  did_moved_job_not_mentioned_dep,
+          omit.stat = c("adj.rsq","ser", "f"), type = 'text')
+
+stargazer(did_moved_family, did_moved_education, did_moved_housing, did_moved_area, 
+          title='Effects of Moving on Job Income: by Reasons for Moving',
+          dep.var.labels = c('Job Income (log)'),
+          covariate.labels = c('N. relocations: Falily Reasons',
+                               'N. relocations: Education Reasons',
+                               'N. relocations: Housing Reasons',
+                               'N. relocations: Area Reasons'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+stargazer(did_moved_family_hh, did_moved_education_hh, did_moved_housing_hh, did_moved_area_hh, 
+          title='Effects of Moving on Per Capita Household Income: by Reasons for Moving',
+          dep.var.labels = c('Per Capita Household Income (log)'),
+          covariate.labels = c('N. relocations: Falily Reasons',
+                               'N. relocations: Education Reasons',
+                               'N. relocations: Housing Reasons',
+                               'N. relocations: Area Reasons'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+stargazer(did_moved_family_emp, did_moved_education_emp, did_moved_housing_emp, did_moved_area_emp,
+          title='Effects of Moving on Employment: by Reasons for Moving',
+          dep.var.labels = c('Employment'),
+          covariate.labels = c('N. relocations: Falily Reasons',
+                               'N. relocations: Education Reasons',
+                               'N. relocations: Housing Reasons',
+                               'N. relocations: Area Reasons'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+stargazer(did_moved_family_dep, did_moved_education_dep, did_moved_housing_dep, did_moved_area_dep,
+          title='Effects of Moving on Dependance on Main Provider: by Reasons for Moving',
+          dep.var.labels = c('Dependance on Main Provider'),
+          covariate.labels = c('N. relocations: Falily Reasons',
+                               'N. relocations: Education Reasons',
+                               'N. relocations: Housing Reasons',
+                               'N. relocations: Area Reasons'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+stargazer(did_moved_job_not_mentioned, did_moved_job_not_mentioned_hh, 
+          did_moved_job_not_mentioned_emp, did_moved_job_not_mentioned_dep,
+          title='Effects of Moving on Income: Robustness checks',
+          dep.var.labels = c('Job Income (log)', 'Per Capita Household Income (log)', 'Employment', 
+                             'Dependance on Main Provider'),
+          covariate.labels = c('N. relocations: Job not Mentioned'),
+          style='aer',
+          omit.stat = c("adj.rsq","ser", "f"), no.space = T)
+```
+
